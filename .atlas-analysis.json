@@ -1,0 +1,185 @@
+{
+  "projectType": "saas",
+  "projectName": "Redash",
+  "projectDescription": "Open source business intelligence platform for connecting to any data source, creating visualizations, dashboards, and sharing insights.",
+  "theme": "palm",
+  "primaryColor": "#fc7c64",
+  "lightColor": "#fcb4a4",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/queries",
+              "features/visualizations",
+              "features/dashboards",
+              "features/alerts",
+              "features/query-snippets"
+            ]
+          },
+          {
+            "group": "Data Sources",
+            "pages": [
+              "data-sources/overview",
+              "data-sources/connecting",
+              "data-sources/sql-databases",
+              "data-sources/nosql-databases",
+              "data-sources/cloud-services",
+              "data-sources/custom-sources"
+            ]
+          },
+          {
+            "group": "User Management",
+            "pages": [
+              "user-management/users-and-groups",
+              "user-management/authentication",
+              "user-management/permissions"
+            ]
+          },
+          {
+            "group": "Administration",
+            "pages": [
+              "admin/configuration",
+              "admin/organizations",
+              "admin/email-setup",
+              "admin/security",
+              "admin/monitoring"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/kubernetes",
+              "deployment/environment-variables",
+              "deployment/upgrading"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/api-integration",
+              "advanced/embedding",
+              "advanced/python-queries",
+              "advanced/parameterized-queries"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/introduction",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "api/queries",
+              "api/query-results",
+              "api/dashboards",
+              "api/visualizations",
+              "api/alerts",
+              "api/data-sources",
+              "api/users",
+              "api/groups"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Data Sources",
+        "groups": [
+          {
+            "group": "SQL Databases",
+            "pages": [
+              "sources/postgresql",
+              "sources/mysql",
+              "sources/mssql",
+              "sources/oracle",
+              "sources/sqlite"
+            ]
+          },
+          {
+            "group": "Cloud Data Warehouses",
+            "pages": [
+              "sources/bigquery",
+              "sources/redshift",
+              "sources/snowflake",
+              "sources/databricks",
+              "sources/athena"
+            ]
+          },
+          {
+            "group": "NoSQL & Analytics",
+            "pages": [
+              "sources/mongodb",
+              "sources/elasticsearch",
+              "sources/clickhouse",
+              "sources/cassandra",
+              "sources/dynamodb"
+            ]
+          },
+          {
+            "group": "Other Sources",
+            "pages": [
+              "sources/prometheus",
+              "sources/google-analytics",
+              "sources/google-sheets",
+              "sources/json-api",
+              "sources/csv"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "SQL and NoSQL query editor with autocomplete",
+    "Drag-and-drop visualization builder",
+    "Interactive dashboards with widgets",
+    "Scheduled query refreshes and alerts",
+    "35+ native data source integrations",
+    "User management with group-based permissions",
+    "REST API for automation",
+    "Embeddable visualizations and dashboards",
+    "Multi-organization support",
+    "Python data source for custom scripts"
+  ],
+  "publicApiSurface": [
+    "GET /api/queries",
+    "POST /api/queries",
+    "GET /api/queries/<query_id>",
+    "POST /api/queries/<query_id>/refresh",
+    "GET /api/query_results/<query_result_id>",
+    "GET /api/dashboards",
+    "POST /api/dashboards",
+    "GET /api/dashboards/<dashboard_id>",
+    "GET /api/visualizations",
+    "POST /api/visualizations",
+    "GET /api/alerts",
+    "POST /api/alerts",
+    "GET /api/data_sources",
+    "POST /api/data_sources",
+    "GET /api/users",
+    "POST /api/users",
+    "GET /api/groups",
+    "POST /api/groups"
+  ]
+}
