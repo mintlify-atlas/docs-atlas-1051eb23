@@ -1,0 +1,351 @@
+---
+title: Dashboards
+description: Combine visualizations into interactive dashboards
+---
+
+Dashboards allow you to combine multiple visualizations and text widgets into a single view, providing a comprehensive overview of your data.
+
+## Creating a Dashboard
+
+To create a new dashboard:
+
+1. Click **Create** → **Dashboard** from the navigation menu
+2. Enter a name for your dashboard
+3. Click **Save**
+
+New dashboards are created as drafts and are empty by default.
+
+## Adding Widgets
+
+Widgets are the building blocks of dashboards. There are two types:
+
+### Visualization Widgets
+
+Add query visualizations to your dashboard:
+
+1. Click **Add Widget** button
+2. Search for the query you want to add
+3. Select which visualization to display (if the query has multiple)
+4. The widget is added to your dashboard
+
+### Text Widgets
+
+Add formatted text, images, and links:
+
+1. Click **Add Textbox** button
+2. Enter your content using Markdown
+3. Preview and save
+
+**Text widget features:**
+- Full Markdown support
+- Embed images and links
+- Create headers and sections
+- Add explanatory text between visualizations
+
+## Layout and Positioning
+
+### Edit Mode
+
+Enter edit mode to arrange widgets:
+
+1. Click **Edit** in the dashboard header
+2. Drag widgets to reposition them
+3. Resize widgets by dragging from the bottom-right corner
+4. Click **Done Editing** to save your layout
+
+The dashboard uses a responsive grid system that automatically adjusts for different screen sizes.
+
+### Widget Sizing
+
+Widgets can be sized to different widths:
+
+- Narrow (1/3 width)
+- Regular (1/2 width)  
+- Wide (2/3 width)
+- Full (100% width)
+
+Height adjusts automatically based on content, but you can resize vertically by dragging.
+
+### Grid Layout
+
+The layout system automatically:
+
+- Snaps widgets to a grid for alignment
+- Prevents overlapping widgets
+- Reflows widgets when the browser is resized
+- Stacks widgets vertically on mobile devices
+
+## Dashboard Parameters
+
+Dashboard-level parameters allow you to filter multiple queries at once:
+
+### Setting Up Parameters
+
+1. Add queries with parameters to your dashboard
+2. When adding the widget, Redash detects parameters with matching names
+3. Parameters with the same name across queries become dashboard-level parameters
+4. Users set the parameter value once and it applies to all linked queries
+
+### Parameter Behavior
+
+- Parameters appear at the top of the dashboard
+- Changing a parameter value refreshes all affected widgets
+- Each query can still have query-specific parameters that aren't shared
+
+### Organizing Parameters
+
+In edit mode, you can:
+
+- Reorder parameters by dragging
+- Set parameter order in dashboard options
+- Hide parameters that should use default values
+
+## Dashboard Filters
+
+Dashboard filters provide a different way to filter data:
+
+### Enabling Filters
+
+1. Enter edit mode
+2. Check **Use Dashboard Level Filters**
+3. Save the dashboard
+
+When enabled, filters appear above the dashboard widgets.
+
+### How Filters Work
+
+Dashboard filters:
+
+- Apply to result data, not query execution
+- Filter across all widgets simultaneously  
+- Work without re-executing queries
+- Are applied client-side on cached results
+
+**Note:** Filters only work on data that's already been retrieved. For large datasets, use parameters instead to filter at the query level.
+
+## Sharing Dashboards
+
+### Internal Sharing
+
+Dashboards are visible to users in groups that have access to:
+
+1. The dashboard itself
+2. All queries used in dashboard widgets
+3. All data sources used by those queries
+
+### Public Dashboards
+
+Share dashboards with users who don't have Redash accounts:
+
+1. Open the dashboard
+2. Click **Publish** in the dashboard menu
+3. A public URL is generated
+4. Share the URL with anyone
+
+**Public dashboard features:**
+- No login required to view
+- Parameters can be set via URL query strings
+- Embedded visualizations show full data
+- Public dashboards can be embedded in other websites
+
+### Stopping Sharing
+
+To disable public access:
+
+1. Open the dashboard
+2. Click **Unpublish** in the menu  
+3. The public URL is deactivated
+
+Only admins and the dashboard owner can publish/unpublish dashboards.
+
+## Refresh Behavior
+
+### Auto-refresh
+
+Set dashboards to refresh automatically:
+
+1. Click the refresh dropdown in the dashboard header
+2. Select a refresh interval:
+   - Disable
+   - Every minute
+   - Every 5 minutes
+   - Every 10 minutes  
+   - Custom interval
+
+Auto-refresh re-executes all queries that aren't cached.
+
+### Manual Refresh
+
+Click the **Refresh** button to:
+
+- Re-execute all queries immediately
+- Update all widgets with the latest data
+- Reset any applied filters
+
+### Widget-Level Refresh
+
+Each widget shows when its data was last updated. You can:
+
+- See the refresh status indicator
+- View the timestamp of the last update
+- Understand which widgets are stale
+
+## Dashboard Actions
+
+### Edit Dashboard
+
+Modify dashboard properties:
+
+1. Click the menu (⋮) → **Edit**
+2. Update the name or tags
+3. Save changes
+
+### Fork Dashboard
+
+Create a copy of a dashboard:
+
+1. Click the menu (⋮) → **Fork**  
+2. A duplicate is created with all widgets
+3. The fork is independent of the original
+
+**Use cases:**
+- Create variations for different teams
+- Experiment without affecting the original
+- Create personal versions of shared dashboards
+
+### Archive Dashboard
+
+Remove dashboards from the main list:
+
+1. Click the menu (⋮) → **Archive**
+2. The dashboard is hidden from search results
+3. Access archived dashboards from the Archive view
+
+Only admins and the dashboard owner can archive dashboards.
+
+### Favorite Dashboard
+
+Mark frequently-used dashboards:
+
+1. Click the star icon in the dashboard header
+2. Access favorites from the **Favorites** filter
+3. Favorites appear first in the dashboard list
+
+## Dashboard Settings
+
+### Dashboard Options
+
+Configure advanced settings:
+
+- **Global parameter order** - Control parameter display sequence
+- **Dashboard filters enabled** - Toggle filter functionality
+
+### Permissions
+
+Dashboard access is controlled by:
+
+- **View permission** - User can see the dashboard
+- **Edit permission** - User can modify layout and settings
+- **Admin permission** - User can delete or archive
+
+Permissions are inherited from:
+
+- Dashboard group membership
+- Query access permissions
+- Data source access permissions
+
+## Search and Organization
+
+### Finding Dashboards
+
+Use the dashboard list to find dashboards by:
+
+- **Search** - Name or description
+- **My Dashboards** - Dashboards you created
+- **Favorites** - Starred dashboards
+- **Tags** - Filter by tag labels
+
+### Tagging
+
+Organize dashboards with tags:
+
+1. Edit the dashboard
+2. Add tags separated by commas
+3. Save the dashboard
+4. Filter by tags in the dashboard list
+
+**Tag best practices:**
+- Use consistent naming conventions
+- Tag by team, project, or function
+- Use tags to indicate production vs. development
+
+## Best Practices
+
+**Dashboard design:**
+- Start with the most important metrics at the top
+- Group related widgets together
+- Use text widgets to add context and headers
+- Limit dashboards to 10-15 widgets for performance
+- Design for the resolution where the dashboard will be viewed
+
+**Performance:**
+- Schedule queries to run automatically so results are cached
+- Use dashboard parameters instead of creating multiple similar queries
+- Avoid adding too many widgets to a single dashboard
+- Consider breaking large dashboards into multiple themed dashboards
+
+**Sharing:**
+- Add descriptions to help others understand the dashboard purpose
+- Document any parameters users need to set
+- Use meaningful names that indicate what the dashboard shows
+- Review permissions to ensure the right people have access
+
+**Maintenance:**
+- Remove or archive dashboards that are no longer used
+- Keep dashboards up-to-date when underlying queries change
+- Test dashboards after making changes to queries they depend on
+- Use tags to track dashboard ownership and status
+
+## Embedding Dashboards
+
+Embed dashboards in external websites or applications:
+
+1. Publish the dashboard to get a public URL
+2. Use the URL in an iframe:
+
+```html
+<iframe 
+  src="https://your-redash.com/public/dashboards/TOKEN"
+  width="100%" 
+  height="600"
+></iframe>
+```
+
+**Embedding tips:**
+- Use the full-screen mode parameter: `?fullscreen`
+- Set parameter values in the URL: `?param=value`
+- Adjust iframe dimensions based on dashboard content
+- Ensure CSP settings allow embedding if hosting on a different domain
+
+## Troubleshooting
+
+**Widget not loading:**
+- Check that the underlying query hasn't been deleted
+- Verify you have access to the query and data source
+- Look for errors in the browser console
+
+**Layout breaks on mobile:**
+- Test responsive behavior in edit mode
+- Avoid very wide widgets that don't stack well
+- Use full-width widgets for better mobile display
+
+**Parameters not working:**
+- Ensure parameter names match exactly across queries
+- Check that parameters are defined in all relevant queries
+- Verify parameter types are compatible
+
+**Performance issues:**
+- Reduce the number of widgets
+- Schedule queries to run automatically
+- Check query execution times
+- Consider breaking into multiple dashboards

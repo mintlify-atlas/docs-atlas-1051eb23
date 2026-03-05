@@ -1,0 +1,325 @@
+---
+title: Users and Groups
+description: Learn how to create users, manage groups, and send invitations in Redash
+---
+
+## Overview
+
+Redash uses a user and group-based system to manage access to resources. Users belong to groups, and groups determine what permissions users have and which data sources they can access.
+
+## Creating Users
+
+### Admin-Created Users
+
+Administrators can create new users through the API or UI. When a user is created:
+
+- The user's email must be valid and unique within the organization
+- The user is automatically added to the organization's default group
+- The user is marked with `is_invitation_pending: true`
+- An invitation email is sent (if email is configured)
+
+**API Endpoint:** `POST /api/users`
+
+**Required fields:**
+- `name`: User's display name
+- `email`: User's email address (must contain `@`)
+
+**Implementation details** (from `/home/daytona/workspace/source/redash/handlers/users.py:131-158`):
+
+```python
+user = models.User(
+    org=self.current_org,
+    name=req["name"],
+    email=req["email"],
+    is_invitation_pending=True,
+    group_ids=[self.current_org.default_group.id],
+)
+```
+
+### Email Validation
+
+Redash validates email addresses against:
+- Disposable email domain blacklist
+- Custom blocked domains (configured via `BLOCKED_DOMAINS` setting)
+
+Emails are automatically converted to lowercase for consistency.
+
+### Rate Limiting
+
+User creation is rate-limited to prevent abuse:
+- **200 requests per day**
+- **50 requests per hour**
+
+## User Invitations
+
+### Sending Invitations
+
+When a user is created or re-invited, Redash generates a secure invitation token and sends an email containing an invite link.
+
+**Invitation flow:**
+
+1. Admin creates user via `POST /api/users`
+2. System generates invitation token using `URLSafeTimedSerializer`
+3. Invitation URL is created: `{base_url}/invite/{token}`
+4. Email is sent to user (if email server is configured)
+5. User clicks link and sets up their account
+
+**Re-sending invitations:**
+
+Admins can resend invitation emails via `POST /api/users/{user_id}/invite`
+
+**Skip email invitation:**
+
+To create a user without sending an email, use the `no_invite` query parameter:
+
+```
+POST /api/users?no_invite
+```
+
+The response will include an `invite_link` field that can be shared manually.
+
+### Invitation Token Security
+
+Invitation tokens:
+- Are time-limited (controlled by `INVITATION_TOKEN_MAX_AGE` setting)
+- Are cryptographically signed
+- Can only be used once to activate the account
+
+## Managing Users
+
+### Viewing Users
+
+**List all users:** `GET /api/users`
+
+Query parameters:
+- `page`: Page number (default: 1)
+- `page_size`: Results per page (default: 25)
+- `q`: Search term (searches name and email)
+- `disabled`: Show disabled users (`true`/`false`)
+- `pending`: Filter by invitation status (`true`/`false`)
+
+**Get specific user:** `GET /api/users/{user_id}`
+
+Users can view their own profile. Admins can view all users with the `list_users` permission.
+
+### Updating Users
+
+**Endpoint:** `POST /api/users/{user_id}`
+
+Updatable fields:
+- `name`: User's display name
+- `email`: User's email address
+- `password`: User's password (requires `old_password`)
+- `group_ids`: Group memberships (admin only)
+
+**Password changes:**
+
+To update a password, both `password` and `old_password` must be provided:
+
+```json
+{
+  "password": "new_password",
+  "old_password": "current_password"
+}
+```
+
+**Email verification:**
+
+When a user's email is changed:
+- `is_email_verified` is set to `false`
+- A verification email is sent (if email server is configured)
+- User must verify the new email address
+
+### Disabling Users
+
+**Disable a user:** `POST /api/users/{user_id}/disable`
+
+**Enable a user:** `DELETE /api/users/{user_id}/disable`
+
+Disabled users:
+- Cannot log in
+- Cannot access any resources
+- Their data and queries remain in the system
+
+**Restrictions:**
+- Admins cannot disable themselves
+- Admins cannot delete themselves
+
+### Deleting Users
+
+**Endpoint:** `DELETE /api/users/{user_id}`
+
+**Important restrictions:**
+- Only users with `is_invitation_pending: true` can be deleted
+- Activated users cannot be deleted (they must be disabled instead)
+- Admins cannot delete themselves
+
+This prevents accidental data loss from users who have created queries and dashboards.
+
+### API Key Management
+
+Each user has a unique API key for programmatic access.
+
+**Regenerate API key:** `POST /api/users/{user_id}/regenerate_api_key`
+
+Only admins or the user themselves can regenerate their API key.
+
+## Groups
+
+### Understanding Groups
+
+Groups serve two primary purposes:
+
+1. **Permissions:** Define what actions users can perform
+2. **Data Source Access:** Control which data sources group members can query
+
+**Built-in groups:**
+
+Every organization has at least one built-in default group that:
+- Cannot be deleted
+- Cannot have its type modified
+- Is automatically assigned to new users
+
+**Group types:**
+- `builtin`: System-managed groups
+- `regular`: User-created groups
+
+### Creating Groups
+
+**Endpoint:** `POST /api/groups` (admin only)
+
+**Required fields:**
+- `name`: Group name
+
+**Default permissions:**
+
+New groups are created with these permissions:
+- `create_dashboard`
+- `create_query`
+- `edit_dashboard`
+- `edit_query`
+- `view_query`
+- `view_source`
+- `execute_query`
+- `list_users`
+- `schedule_query`
+- `list_dashboards`
+- `list_alerts`
+- `list_data_sources`
+
+### Managing Group Membership
+
+**Add user to group:** `POST /api/groups/{group_id}/members`
+
+```json
+{
+  "user_id": 123
+}
+```
+
+**Remove user from group:** `DELETE /api/groups/{group_id}/members/{user_id}`
+
+**List group members:** `GET /api/groups/{group_id}/members`
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/groups.py:74-89`):
+
+```python
+user.group_ids.append(group.id)
+models.db.session.commit()
+```
+
+Group membership is stored as an array of group IDs on the user object.
+
+### Updating Groups
+
+**Endpoint:** `POST /api/groups/{group_id}` (admin only)
+
+**Updatable fields:**
+- `name`: Group name
+
+**Restrictions:**
+- Built-in groups cannot be modified
+
+### Deleting Groups
+
+**Endpoint:** `DELETE /api/groups/{group_id}` (admin only)
+
+When a group is deleted:
+- All members are automatically removed from the group
+- The group ID is removed from each user's `group_ids` array
+- Built-in groups cannot be deleted
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/groups.py:63-69`):
+
+```python
+members = models.Group.members(group_id)
+for member in members:
+    member.group_ids.remove(int(group_id))
+    models.db.session.add(member)
+```
+
+## User States
+
+### Invitation Pending
+
+Users created by admins start with `is_invitation_pending: true`. This state indicates:
+- User has not yet accepted the invitation
+- User cannot log in
+- User has no password set
+
+When the user accepts the invitation, this flag is set to `false`.
+
+### Disabled
+
+Disabled users have a `disabled_at` timestamp set. They:
+- Cannot log in
+- Do not appear in standard user listings (unless `disabled: true` filter is used)
+- Can be re-enabled by admins
+
+### Active
+
+Active users:
+- Have accepted their invitation (`is_invitation_pending: false`)
+- Are not disabled (`disabled_at: null`)
+- Can log in and use the system
+
+## Password Reset
+
+**Admin-initiated:** `POST /api/users/{user_id}/reset`
+
+Admins can send password reset emails to users. The response includes a `reset_link` that can be shared if email is not configured.
+
+**Reset link format:** `{base_url}/reset/{token}`
+
+Reset tokens are:
+- Time-limited (same as invitation tokens)
+- Single-use
+- Cryptographically signed
+
+## User Search
+
+The user list endpoint supports full-text search:
+
+```
+GET /api/users?q=search_term
+```
+
+Searches against:
+- User name (case-insensitive)
+- User email (case-sensitive for domain matching)
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/users.py:202-206`):
+
+```python
+term = "%{}%".format(term)
+search_filter = or_(cls.name.ilike(term), cls.email.like(term))
+return base_query.filter(search_filter)
+```
+
+## Best Practices
+
+1. **Use groups for permissions:** Assign users to groups rather than granting individual permissions
+2. **Disable, don't delete:** Disable users instead of deleting to preserve audit trails
+3. **Regular group audits:** Periodically review group memberships
+4. **Default group configuration:** Configure the default group with minimal permissions
+5. **Email verification:** Enable email verification for added security

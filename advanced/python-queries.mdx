@@ -1,0 +1,398 @@
+---
+title: "Python Queries"
+description: "Execute Python scripts as data sources in Redash"
+---
+
+## Overview
+
+The Python data source allows you to write custom Python scripts that generate query results. This is useful for:
+
+- Combining data from multiple sources
+- Performing complex data transformations
+- Calling external APIs
+- Running custom calculations
+
+## Setup
+
+The Python query runner uses RestrictedPython for security and requires pandas for certain features.
+
+### Prerequisites
+
+```bash
+pip install restrictedpython
+pip install pandas  # Optional but recommended
+```
+
+### Add Python Data Source
+
+1. Go to **Settings** > **Data Sources**
+2. Click **New Data Source**
+3. Select **Python**
+4. Configure allowed modules and paths
+
+### Configuration Options
+
+- **Modules to import**: Comma-separated list of allowed modules (e.g., `requests,json,datetime`)
+- **Additional module paths**: Custom Python module paths
+- **Additional builtins**: Extra safe built-in functions to allow
+
+## Writing Python Queries
+
+### Basic Structure
+
+Every Python query must populate the `result` dictionary with `rows` and `columns`:
+
+```python
+# Define columns
+add_result_column(result, "name", "Name", TYPE_STRING)
+add_result_column(result, "count", "Count", TYPE_INTEGER)
+
+# Add data rows
+add_result_row(result, {"name": "Alice", "count": 100})
+add_result_row(result, {"name": "Bob", "count": 150})
+```
+
+### Column Types
+
+Supported column types:
+
+- `TYPE_STRING` - Text values
+- `TYPE_INTEGER` - Whole numbers
+- `TYPE_FLOAT` - Decimal numbers
+- `TYPE_BOOLEAN` - True/False values
+- `TYPE_DATE` - Date values
+- `TYPE_DATETIME` - Date and time values
+
+### Helper Functions
+
+#### add_result_column
+
+Define a column in the result set:
+
+```python
+add_result_column(result, column_name, friendly_name, column_type)
+```
+
+Parameters:
+- `result` - The result dictionary
+- `column_name` - Internal column identifier (lowercase, underscore-separated)
+- `friendly_name` - Display name for the column
+- `column_type` - One of the TYPE_* constants
+
+#### add_result_row
+
+Add a row of data:
+
+```python
+add_result_row(result, {"column1": value1, "column2": value2})
+```
+
+The dictionary keys must match column names.
+
+#### execute_query
+
+Query another data source:
+
+```python
+data = execute_query("PostgreSQL Production", "SELECT * FROM users")
+# Returns: {"rows": [...], "columns": [...]}
+```
+
+Parameters:
+- `data_source_name_or_id` - Data source name (string) or ID (integer)
+- `query` - SQL or query text to execute
+- `result_type` - Optional: `"dataframe"` to return pandas DataFrame
+
+#### get_query_result
+
+Retrieve results from an existing query:
+
+```python
+data = get_query_result(42)  # Query ID
+# Returns: {"rows": [...], "columns": [...]}
+```
+
+#### get_source_schema
+
+Get schema information from a data source:
+
+```python
+schema = get_source_schema("PostgreSQL Production")
+# Returns table and column metadata
+```
+
+#### get_current_user
+
+Get information about the user running the query:
+
+```python
+user = get_current_user()
+print(user["email"])
+print(user["name"])
+```
+
+### Pandas Support
+
+If pandas is installed, you can use DataFrames:
+
+```python
+import pandas as pd
+
+# Create DataFrame
+df = pd.DataFrame({
+    "date": pd.date_range("2024-01-01", periods=5),
+    "sales": [100, 150, 200, 180, 220],
+    "region": ["US", "EU", "US", "APAC", "EU"]
+})
+
+# Convert to result format
+dataframe_to_result(result, df)
+```
+
+You can also get query results as DataFrames:
+
+```python
+df = execute_query("PostgreSQL", "SELECT * FROM sales", result_type="dataframe")
+# df is a pandas DataFrame
+df_filtered = df[df["amount"] > 1000]
+dataframe_to_result(result, df_filtered)
+```
+
+## Examples
+
+### Combining Multiple Data Sources
+
+```python
+import pandas as pd
+
+# Get data from PostgreSQL
+pg_data = execute_query("PostgreSQL", 
+    "SELECT user_id, email FROM users",
+    result_type="dataframe"
+)
+
+# Get data from MySQL
+mysql_data = execute_query("MySQL Analytics",
+    "SELECT user_id, total_orders FROM order_summary",
+    result_type="dataframe"
+)
+
+# Merge datasets
+merged = pd.merge(pg_data, mysql_data, on="user_id", how="inner")
+
+# Convert to result
+dataframe_to_result(result, merged)
+```
+
+### API Integration
+
+```python
+import requests
+import json
+
+# Call external API (requests must be in allowedImportModules)
+response = requests.get("https://api.example.com/data")
+data = response.json()
+
+# Define result structure
+add_result_column(result, "id", "ID", TYPE_INTEGER)
+add_result_column(result, "name", "Name", TYPE_STRING)
+add_result_column(result, "value", "Value", TYPE_FLOAT)
+
+# Process API response
+for item in data["items"]:
+    add_result_row(result, {
+        "id": item["id"],
+        "name": item["name"],
+        "value": float(item["value"])
+    })
+```
+
+### Data Transformation
+
+```python
+import pandas as pd
+from datetime import datetime, timedelta
+
+# Get raw data
+raw_data = execute_query("PostgreSQL",
+    "SELECT date, revenue FROM daily_sales",
+    result_type="dataframe"
+)
+
+# Calculate 7-day moving average
+raw_data["ma_7"] = raw_data["revenue"].rolling(window=7).mean()
+
+# Calculate week-over-week growth
+raw_data["wow_growth"] = raw_data["revenue"].pct_change(periods=7) * 100
+
+# Remove NaN values
+raw_data = raw_data.dropna()
+
+# Convert to result
+dataframe_to_result(result, raw_data)
+```
+
+### Complex Calculations
+
+```python
+import pandas as pd
+import numpy as np
+
+# Get query results
+df = get_query_result(123)["rows"]
+df = pd.DataFrame(df)
+
+# Perform calculations
+df["conversion_rate"] = (df["conversions"] / df["visits"]) * 100
+df["revenue_per_visit"] = df["revenue"] / df["visits"]
+
+# Statistical analysis
+df["z_score"] = (df["revenue"] - df["revenue"].mean()) / df["revenue"].std()
+df["outlier"] = np.abs(df["z_score"]) > 2
+
+# Convert to result
+dataframe_to_result(result, df)
+```
+
+### Logging and Debugging
+
+```python
+# Print statements are captured in logs
+print("Starting query execution")
+
+data = execute_query("PostgreSQL", "SELECT COUNT(*) as count FROM users")
+print(f"Found {data['rows'][0]['count']} users")
+
+# Disable logging temporarily
+disable_print_log()
+print("This won't appear in logs")
+enable_print_log()
+
+print("This will appear in logs")
+
+# Add results
+add_result_column(result, "count", "User Count", TYPE_INTEGER)
+add_result_row(result, {"count": data["rows"][0]["count"]})
+
+# Logs appear in result["log"] field
+```
+
+## Security & Restrictions
+
+Python queries run in a restricted environment using RestrictedPython:
+
+### Allowed Operations
+
+- Safe built-in functions: `abs`, `all`, `any`, `bool`, `dict`, `enumerate`, `filter`, `float`, `int`, `len`, `list`, `map`, `max`, `min`, `round`, `set`, `sorted`, `str`, `sum`, `tuple`
+- Imports from configured `allowedImportModules` only
+- Attribute access with `getattr`/`setattr`
+- Dictionary and list operations
+- Mathematical operations
+
+### Restricted Operations
+
+<Warning>
+These operations are blocked for security:
+</Warning>
+
+- File system access (no `open()`, `read()`, `write()`)
+- Process execution (no `os.system()`, `subprocess`)
+- Network access (unless `requests` is explicitly allowed)
+- Importing unauthorized modules
+- Access to private attributes (no `__import__`, `__builtins__`)
+
+### Safe Module Configuration
+
+Only allow trusted modules in configuration:
+
+```json
+{
+  "allowedImportModules": "requests,json,datetime,numpy,pandas"
+}
+```
+
+## Performance Considerations
+
+<Tip>
+Python queries can be slower than native SQL. Use them when SQL isn't sufficient.
+</Tip>
+
+### Best Practices
+
+1. **Limit data volume**: Filter data in SQL before processing in Python
+   ```python
+   # Good: Filter in SQL
+   data = execute_query("PostgreSQL", 
+       "SELECT * FROM orders WHERE date > '2024-01-01'",
+       result_type="dataframe"
+   )
+   
+   # Avoid: Getting all data and filtering in Python
+   data = execute_query("PostgreSQL", "SELECT * FROM orders")
+   ```
+
+2. **Use pandas for large datasets**: DataFrames are optimized for bulk operations
+
+3. **Cache results**: Set appropriate refresh schedules instead of running on every view
+
+4. **Avoid loops when possible**: Use vectorized pandas operations
+   ```python
+   # Good: Vectorized operation
+   df["total"] = df["price"] * df["quantity"]
+   
+   # Avoid: Loop
+   for index, row in df.iterrows():
+       df.at[index, "total"] = row["price"] * row["quantity"]
+   ```
+
+## Troubleshooting
+
+### Import Errors
+
+```
+'requests' is not configured as a supported import module
+```
+
+**Solution**: Add the module to `allowedImportModules` in data source settings.
+
+### Missing Result Fields
+
+```
+Missing `columns` field in `result` dict
+```
+
+**Solution**: Ensure you're using `add_result_column()` to define columns.
+
+### Type Errors
+
+```
+'TYPE_STRING' is not a supported column type
+```
+
+**Solution**: Use the correct constant names:
+- `TYPE_STRING` (not `"string"`)
+- `TYPE_INTEGER` (not `"int"`)
+- `TYPE_FLOAT` (not `"float"`)
+
+### Query Execution Errors
+
+```
+Query id 123 does not exist
+```
+
+**Solution**: Verify the query ID exists and you have permission to access it.
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="Parameterized Queries" icon="sliders" href="/advanced/parameterized-queries">
+  Add dynamic parameters to Python queries
+</Card>
+
+<Card title="API Integration" icon="code" href="/advanced/api-integration">
+  Automate Python query execution via API
+</Card>
+
+</CardGroup>

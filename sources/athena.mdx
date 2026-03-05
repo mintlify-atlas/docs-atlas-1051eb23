@@ -1,0 +1,579 @@
+---
+title: Amazon Athena
+description: Connect Redash to Amazon Athena to query data in Amazon S3 using SQL
+---
+
+Amazon Athena is an interactive query service that makes it easy to analyze data directly in Amazon S3 using standard SQL.
+
+## Prerequisites
+
+- AWS account with Athena enabled
+- S3 bucket for query results storage
+- AWS credentials with appropriate permissions (or IAM role)
+- Data cataloged in AWS Glue Data Catalog or Athena's internal catalog
+
+## Authentication Methods
+
+Athena supports multiple authentication methods:
+
+### 1. AWS Access Keys
+
+Use IAM user access keys for authentication.
+
+### 2. IAM Role (EC2/ECS/EKS)
+
+Use the IAM role attached to the instance/container running Redash. No credentials needed.
+
+### 3. IAM Role Assumption
+
+Assume a different IAM role for cross-account access or enhanced security.
+
+## Configuration
+
+### Required Settings
+
+<ParamField path="region" type="string" required>
+  AWS region where your Athena workgroup and S3 bucket are located.
+  
+  Examples: `us-east-1`, `eu-west-1`, `ap-southeast-1`
+</ParamField>
+
+<ParamField path="s3_staging_dir" type="string" required>
+  S3 bucket path where Athena stores query results.
+  
+  Format: `s3://bucket-name/path/`
+  
+  Example: `s3://my-athena-results/queries/`
+  
+  <Warning>
+    Ensure the trailing slash is included and the bucket is in the same region as your Athena workgroup.
+  </Warning>
+</ParamField>
+
+### Authentication
+
+The authentication method depends on your environment variables:
+
+#### Standard Mode (Access Keys)
+
+Default when `ATHENA_ASSUME_ROLE=false` (default):
+
+<ParamField path="aws_access_key" type="string">
+  AWS access key ID. Optional if `ATHENA_OPTIONAL_CREDENTIALS=true` (default).
+</ParamField>
+
+<ParamField path="aws_secret_key" type="string">
+  AWS secret access key. Optional if `ATHENA_OPTIONAL_CREDENTIALS=true` (default).
+</ParamField>
+
+<Note>
+  When credentials are omitted, Redash uses the AWS SDK's default credential chain (environment variables, instance profile, etc.).
+</Note>
+
+#### IAM Role Assumption Mode
+
+When `ATHENA_ASSUME_ROLE=true`:
+
+<ParamField path="iam_role" type="string" required>
+  ARN of the IAM role to assume.
+  
+  Example: `arn:aws:iam::123456789012:role/AthenaAccessRole`
+</ParamField>
+
+<ParamField path="external_id" type="string">
+  External ID for STS assume role operation. Required if the role's trust policy requires it.
+</ParamField>
+
+### Query Configuration
+
+<ParamField path="schema" type="string" default="default">
+  Default database/schema name for queries.
+  
+  You can override this in individual queries with `USE schema_name;`
+</ParamField>
+
+<ParamField path="work_group" type="string" default="primary">
+  Athena workgroup to use for query execution.
+  
+  Workgroups provide:
+  - Query result location configuration
+  - Query execution limits
+  - Cost tracking and budgets
+  - Encryption settings
+</ParamField>
+
+### Advanced Settings
+
+<ParamField path="glue" type="boolean" default="false">
+  Use AWS Glue Data Catalog for schema information instead of querying `INFORMATION_SCHEMA`.
+  
+  Recommended when:
+  - You have many databases/tables
+  - `INFORMATION_SCHEMA` queries are slow
+  - You use multiple Glue catalogs
+</ParamField>
+
+<ParamField path="catalog_ids" type="string">
+  Comma-separated list of Glue Data Catalog IDs to include in schema browser.
+  
+  Example: `123456789012, 987654321098`
+  
+  Leave blank to use the default catalog (your AWS account).
+  
+  Only used when `glue` is enabled.
+</ParamField>
+
+<ParamField path="cost_per_tb" type="number" default="5">
+  Athena cost per terabyte of data scanned, in USD.
+  
+  Used to calculate query cost in result metadata. Update if AWS pricing changes.
+</ParamField>
+
+<ParamField path="result_reuse_enable" type="boolean" default="false">
+  Enable Athena's query result reuse feature to reduce costs.
+  
+  When enabled, Athena reuses results from recent identical queries.
+</ParamField>
+
+<ParamField path="result_reuse_minutes" type="number" default="60">
+  Number of minutes to reuse query results when `result_reuse_enable` is true.
+  
+  Range: 1-10080 minutes (7 days)
+</ParamField>
+
+### Encryption Settings
+
+These settings are only visible when `ATHENA_SHOW_EXTRA_SETTINGS=true`:
+
+<ParamField path="encryption_option" type="string">
+  S3 encryption method for query results.
+  
+  Options:
+  - `SSE_S3` - S3-managed encryption
+  - `SSE_KMS` - KMS-managed encryption
+  - `CSE_KMS` - Client-side encryption with KMS
+</ParamField>
+
+<ParamField path="kms_key" type="string">
+  KMS key ID or ARN for encryption (required when using `SSE_KMS` or `CSE_KMS`).
+  
+  Example: `arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012`
+</ParamField>
+
+## IAM Permissions
+
+### Basic Athena Access
+
+Minimum permissions for querying data:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution",
+        "athena:GetQueryExecution",
+        "athena:GetQueryResults",
+        "athena:StopQueryExecution",
+        "athena:GetWorkGroup"
+      ],
+      "Resource": [
+        "arn:aws:athena:*:*:workgroup/primary"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-athena-results",
+        "arn:aws:s3:::my-athena-results/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-data-bucket",
+        "arn:aws:s3:::my-data-bucket/*"
+      ]
+    }
+  ]
+}
+```
+
+### With Glue Data Catalog
+
+Add these permissions when using Glue for schema browsing:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "glue:GetDatabase",
+    "glue:GetDatabases",
+    "glue:GetTable",
+    "glue:GetTables",
+    "glue:GetPartition",
+    "glue:GetPartitions"
+  ],
+  "Resource": [
+    "arn:aws:glue:*:*:catalog",
+    "arn:aws:glue:*:*:database/*",
+    "arn:aws:glue:*:*:table/*/*"
+  ]
+}
+```
+
+### With KMS Encryption
+
+Add KMS permissions if using encrypted data or results:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "kms:Decrypt",
+    "kms:GenerateDataKey"
+  ],
+  "Resource": [
+    "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+  ]
+}
+```
+
+### Cross-Account Access (Assumed Role)
+
+The source account's role/user needs:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "sts:AssumeRole",
+  "Resource": "arn:aws:iam::TARGET_ACCOUNT:role/AthenaAccessRole"
+}
+```
+
+The target role's trust policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::SOURCE_ACCOUNT:role/RedashRole"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "your-external-id"
+        }
+      }
+    }
+  ]
+}
+```
+
+## Schema Browser
+
+Athena provides two methods for loading schema:
+
+### INFORMATION_SCHEMA (Default)
+
+Queries Athena's `INFORMATION_SCHEMA` to get tables and columns:
+
+```sql
+SELECT table_schema, table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema NOT IN ('information_schema')
+```
+
+**Pros**: Works with any Athena setup  
+**Cons**: Can be slow with many tables
+
+### AWS Glue Data Catalog
+
+Uses Glue APIs to fetch schema information directly.
+
+**Pros**: Faster for large catalogs, supports multiple catalog IDs  
+**Cons**: Requires additional IAM permissions
+
+Enable with `glue: true` in configuration.
+
+## Query Features
+
+### Supported Data Types
+
+- **Integer**: `TINYINT`, `SMALLINT`, `INTEGER`, `BIGINT`
+- **Floating-point**: `DOUBLE`, `DECIMAL`
+- **String**: `VARCHAR`, `CHAR`
+- **Boolean**: `BOOLEAN`
+- **Date/Time**: `DATE`, `TIMESTAMP`
+- **Binary**: `VARBINARY`
+- **Complex**: `ARRAY`, `MAP`, `ROW` (returned as JSON strings)
+
+### Query Metadata
+
+Every query result includes cost and performance metadata:
+
+```json
+{
+  "data_scanned": 1073741824,  // bytes
+  "athena_query_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "query_cost": 0.005  // USD
+}
+```
+
+### Query Result Reuse
+
+Enable result reuse to reduce costs:
+
+1. Set `result_reuse_enable: true`
+2. Set `result_reuse_minutes` to your desired cache duration
+3. Athena will reuse results for identical queries within the time window
+
+<Note>
+  Combine with Redash's query caching for maximum efficiency.
+</Note>
+
+### Query Cancellation
+
+Redash automatically cancels running Athena queries when:
+- The user manually cancels the query
+- The query times out
+- The query is interrupted
+
+## Workgroups
+
+Workgroups help organize and manage queries:
+
+### Creating a Workgroup for Redash
+
+1. Go to **Athena Console** → **Workgroups**
+2. Click **Create workgroup**
+3. Configure:
+   - **Name**: `redash`
+   - **Query result location**: Your S3 bucket
+   - **Data usage controls**: Set per-query and per-workgroup limits
+   - **Encryption**: Configure if needed
+4. Use `work_group: redash` in Redash configuration
+
+### Workgroup Benefits
+
+- **Cost tracking**: Tag workgroups to track Redash query costs
+- **Query limits**: Prevent expensive queries
+- **Result encryption**: Enforce encryption on results
+- **Override client settings**: Control result location and encryption
+
+## Cost Optimization
+
+### Minimizing Data Scanned
+
+1. **Use Partitioning**: Query only necessary partitions
+   ```sql
+   SELECT * FROM logs
+   WHERE year = 2024 AND month = 1 AND day = 15
+   ```
+
+2. **Select Specific Columns**: Avoid `SELECT *`
+   ```sql
+   SELECT user_id, event_type FROM events
+   ```
+
+3. **Use Columnar Formats**: Parquet and ORC reduce scan costs
+   ```sql
+   CREATE EXTERNAL TABLE events_parquet
+   STORED AS PARQUET
+   LOCATION 's3://bucket/events/';
+   ```
+
+4. **Compress Data**: Use Snappy, GZIP, or other compression
+
+5. **Enable Result Reuse**: Avoid re-scanning data for duplicate queries
+
+### Monitoring Costs
+
+Track costs in query results metadata:
+
+```sql
+-- This query's cost appears in metadata
+SELECT 
+  COUNT(*) as total_events,
+  SUM(amount) as total_revenue
+FROM events
+WHERE date >= DATE '2024-01-01'
+```
+
+The `query_cost` field shows estimated cost based on `cost_per_tb` setting.
+
+## Example Queries
+
+### Basic Query with Partitions
+
+```sql
+SELECT 
+  event_type,
+  COUNT(*) as count
+FROM 
+  events
+WHERE 
+  year = 2024
+  AND month = 1
+  AND day >= 1
+GROUP BY 
+  event_type
+ORDER BY 
+  count DESC;
+```
+
+### Querying JSON Data
+
+```sql
+SELECT 
+  json_extract_scalar(data, '$.user.id') as user_id,
+  json_extract_scalar(data, '$.event.type') as event_type,
+  date
+FROM 
+  json_events
+WHERE 
+  year = 2024
+  AND json_extract_scalar(data, '$.event.type') = 'purchase';
+```
+
+### Using WITH Clause
+
+```sql
+WITH recent_users AS (
+  SELECT DISTINCT user_id
+  FROM events
+  WHERE date >= DATE '2024-01-01'
+)
+SELECT 
+  u.user_id,
+  u.email,
+  COUNT(e.event_id) as event_count
+FROM 
+  recent_users ru
+  JOIN users u ON ru.user_id = u.id
+  LEFT JOIN events e ON u.id = e.user_id
+GROUP BY 
+  u.user_id, u.email;
+```
+
+### Window Functions
+
+```sql
+SELECT 
+  customer_id,
+  order_date,
+  amount,
+  ROW_NUMBER() OVER (
+    PARTITION BY customer_id 
+    ORDER BY order_date DESC
+  ) as order_rank
+FROM 
+  orders
+WHERE 
+  year = 2024;
+```
+
+## Troubleshooting
+
+### "Access Denied" on S3 Results Bucket
+
+**Problem**: `Access Denied` when writing query results
+
+**Solutions**:
+1. Grant `s3:PutObject` permission on results bucket
+2. Verify bucket is in same region as Athena workgroup
+3. Check bucket policy allows your IAM principal
+4. Ensure KMS key permissions if bucket is encrypted
+
+### "Table Not Found"
+
+**Problem**: `HIVE_DATABASE_NOT_FOUND` or `TABLE_NOT_FOUND`
+
+**Solutions**:
+1. Verify database/table exists in Glue Data Catalog
+2. Check spelling and case sensitivity
+3. Ensure IAM permissions include `glue:GetTable`
+4. Use `SHOW DATABASES` and `SHOW TABLES IN database` to verify
+
+### Schema Browser Empty
+
+**Problem**: No databases or tables showing
+
+**Solutions**:
+1. Check IAM permissions for Glue or Athena
+2. Verify `schema` setting in configuration
+3. Try enabling/disabling `glue` option
+4. Check catalog IDs if using multiple catalogs
+
+### Query Timeout
+
+**Problem**: Large queries timing out
+
+**Solutions**:
+1. Increase Redash query timeout setting
+2. Optimize query to scan less data
+3. Use partitioning and columnar formats
+4. Check Athena query execution history for actual query time
+
+### "Invalid S3 Staging Directory"
+
+**Problem**: S3 staging directory configuration error
+
+**Solutions**:
+1. Ensure format is `s3://bucket-name/path/` with trailing slash
+2. Verify bucket exists and is accessible
+3. Check bucket is in same region as workgroup
+4. Confirm IAM permissions for bucket
+
+## Best Practices
+
+1. **Use Partitioning**: Always partition large tables by date or other high-cardinality columns
+
+2. **Columnar Formats**: Use Parquet or ORC for better performance and lower costs
+
+3. **Compression**: Enable compression to reduce storage and scan costs
+
+4. **Result Reuse**: Enable for queries that run repeatedly with same parameters
+
+5. **Workgroups**: Use dedicated workgroups for cost tracking and query limits
+
+6. **IAM Roles**: Prefer IAM roles over access keys for better security
+
+7. **Query Optimization**:
+   - Avoid `SELECT *`
+   - Filter on partition columns
+   - Use `LIMIT` for exploratory queries
+   - Leverage query result caching
+
+8. **Cost Monitoring**: Review query metadata to track data scanned and costs
+
+9. **Schema Design**: Organize data with clear partition schemes (e.g., year/month/day)
+
+10. **Security**:
+    - Encrypt query results in S3
+    - Use workgroup settings to enforce encryption
+    - Implement least-privilege IAM policies
+    - Rotate access keys regularly
+
+## Additional Resources
+
+- [Athena Documentation](https://docs.aws.amazon.com/athena/)
+- [SQL Reference](https://docs.aws.amazon.com/athena/latest/ug/ddl-sql-reference.html)
+- [Cost Optimization](https://docs.aws.amazon.com/athena/latest/ug/cost-optimization.html)
+- [Partitioning Data](https://docs.aws.amazon.com/athena/latest/ug/partitions.html)
+- [Workgroups](https://docs.aws.amazon.com/athena/latest/ug/workgroups.html)

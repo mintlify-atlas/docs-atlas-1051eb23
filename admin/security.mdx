@@ -1,0 +1,456 @@
+---
+title: Security
+description: Secure your Redash deployment with HTTPS, authentication, and security headers
+---
+
+Redash provides multiple layers of security to protect your data and users. This guide covers security configuration options.
+
+## Secret Keys
+
+### Cookie Secret (Required)
+
+<Warning>
+  `REDASH_COOKIE_SECRET` is **required** to start Redash. The application will refuse to start without it.
+</Warning>
+
+```bash
+REDASH_COOKIE_SECRET=<random-string>
+```
+
+Used for:
+- Session cookie signing
+- CSRF token generation
+- General cryptographic operations
+
+Generate a secure value:
+
+```bash
+python -c 'import secrets; print(secrets.token_hex(32))'
+```
+
+See `/home/daytona/workspace/source/redash/settings/__init__.py:59` for enforcement.
+
+### Data Source Secret
+
+```bash
+REDASH_SECRET_KEY=<random-string>
+```
+
+Used to encrypt data source connection options (credentials, API keys, etc.). If not set, defaults to `REDASH_COOKIE_SECRET`.
+
+<Warning>
+  Changing `REDASH_SECRET_KEY` after data sources are configured will make existing data sources unreadable.
+</Warning>
+
+## HTTPS Configuration
+
+### Enforcing HTTPS
+
+Redirect all HTTP requests to HTTPS:
+
+```bash
+REDASH_ENFORCE_HTTPS=true
+REDASH_ENFORCE_HTTPS_PERMANENT=false  # Use 301 instead of 302 redirects
+```
+
+Implementation: `/home/daytona/workspace/source/redash/security.py:54`
+
+### HSTS (HTTP Strict Transport Security)
+
+Force browsers to use HTTPS:
+
+```bash
+REDASH_HSTS_ENABLED=true
+REDASH_HSTS_MAX_AGE=31536000           # Seconds (1 year)
+REDASH_HSTS_INCLUDE_SUBDOMAINS=false
+REDASH_HSTS_PRELOAD=false
+```
+
+When enabled:
+- Browsers will refuse HTTP connections
+- Protects against protocol downgrade attacks
+- Only enable after confirming HTTPS works correctly
+
+Implementation: `/home/daytona/workspace/source/redash/security.py:59`
+
+## Cookie Security
+
+### Session Cookies
+
+```bash
+REDASH_SESSION_COOKIE_SECURE=true      # Send only over HTTPS
+REDASH_SESSION_COOKIE_HTTPONLY=true    # Prevent JavaScript access
+REDASH_SESSION_COOKIE_NAME=session
+REDASH_SESSION_EXPIRY_TIME=21600       # Seconds (6 hours)
+```
+
+### Remember Me Cookies
+
+```bash
+REDASH_REMEMBER_COOKIE_SECURE=true
+REDASH_REMEMBER_COOKIE_HTTPONLY=true
+REDASH_REMEMBER_COOKIE_DURATION=2678400  # Seconds (31 days)
+```
+
+### Global Cookie Settings
+
+```bash
+REDASH_COOKIES_SECURE=true  # Default for all cookies
+```
+
+If not set, `COOKIES_SECURE` defaults to the value of `ENFORCE_HTTPS`.
+
+## Content Security Policy (CSP)
+
+Control what resources browsers can load:
+
+```bash
+REDASH_CONTENT_SECURITY_POLICY="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; font-src 'self' data:; img-src 'self' http: https: data: blob:; object-src 'none'; frame-ancestors 'none'; frame-src redash.io;"
+```
+
+### CSP Directives
+
+- `default-src 'self'` - Only load resources from same origin
+- `script-src 'self' 'unsafe-eval'` - Allow scripts from same origin and eval (required for queries)
+- `style-src 'self' 'unsafe-inline'` - Allow inline styles
+- `frame-ancestors 'none'` - Prevent embedding in iframes
+- `object-src 'none'` - Block plugins like Flash
+
+### CSP Reporting
+
+```bash
+REDASH_CONTENT_SECURITY_POLICY_REPORT_URI=https://example.com/csp-report
+REDASH_CONTENT_SECURITY_POLICY_REPORT_ONLY=true  # Log violations without blocking
+```
+
+### CSP Nonce
+
+```bash
+REDASH_CONTENT_SECURITY_POLICY_NONCE_IN=script-src,style-src
+```
+
+Implementation: `/home/daytona/workspace/source/redash/security.py:63`
+
+## Security Headers
+
+### X-Frame-Options
+
+Prevent clickjacking attacks:
+
+```bash
+REDASH_FRAME_OPTIONS=deny              # Recommended
+# or
+REDASH_FRAME_OPTIONS=sameorigin        # Allow same-origin framing
+# or
+REDASH_FRAME_OPTIONS_ALLOW_FROM=https://trusted.example.com
+```
+
+### Referrer Policy
+
+Control referrer information:
+
+```bash
+REDASH_REFERRER_POLICY=strict-origin-when-cross-origin
+```
+
+Options:
+- `no-referrer` - Never send referrer
+- `strict-origin-when-cross-origin` - Send origin for cross-origin requests
+- `same-origin` - Only send for same-origin requests
+
+### Feature Policy
+
+Control browser features:
+
+```bash
+REDASH_FEATURE_POLICY="geolocation 'none'; microphone 'none'; camera 'none'"
+```
+
+## CSRF Protection
+
+<Warning>
+  CSRF protection is **disabled by default** for backwards compatibility. It is highly recommended to enable it.
+</Warning>
+
+```bash
+REDASH_ENFORCE_CSRF=true
+REDASH_CSRF_TIME_LIMIT=21600  # Seconds (6 hours)
+```
+
+When enabled:
+- All API requests require a CSRF token
+- Tokens are automatically included in cookies
+- Protects against cross-site request forgery attacks
+
+Implementation: `/home/daytona/workspace/source/redash/security.py:35`
+
+## Authentication
+
+### Password Login
+
+Enable/disable password-based authentication:
+
+```bash
+REDASH_PASSWORD_LOGIN_ENABLED=true
+```
+
+Or per-organization via API:
+
+```bash
+PATCH /api/settings/organization
+{
+  "auth_password_login_enabled": false
+}
+```
+
+### Google OAuth
+
+```bash
+REDASH_GOOGLE_CLIENT_ID=your-client-id
+REDASH_GOOGLE_CLIENT_SECRET=your-client-secret
+REDASH_GOOGLE_OAUTH_SCHEME_OVERRIDE=https  # Force HTTPS for OAuth redirect
+```
+
+### SAML
+
+```bash
+REDASH_SAML_METADATA_URL=https://idp.example.com/metadata
+REDASH_SAML_ENTITY_ID=https://redash.example.com
+REDASH_SAML_SCHEME_OVERRIDE=https
+```
+
+Encryption (optional):
+
+```bash
+REDASH_SAML_ENCRYPTION_PEM_PATH=/path/to/key.pem
+REDASH_SAML_ENCRYPTION_CERT_PATH=/path/to/cert.pem
+```
+
+### LDAP
+
+```bash
+REDASH_LDAP_LOGIN_ENABLED=true
+REDASH_LDAP_URL=ldap://ldap.example.com:389
+REDASH_LDAP_BIND_DN=cn=admin,dc=example,dc=com
+REDASH_LDAP_BIND_DN_PASSWORD=secret
+REDASH_LDAP_SEARCH_DN=ou=users,dc=example,dc=com
+REDASH_LDAP_SEARCH_TEMPLATE=(uid=%(username)s)
+REDASH_LDAP_USE_SSL=true
+```
+
+### JWT Authentication
+
+```bash
+REDASH_JWT_LOGIN_ENABLED=true
+REDASH_JWT_AUTH_ISSUER=https://auth.example.com
+REDASH_JWT_AUTH_PUBLIC_CERTS_URL=https://auth.example.com/.well-known/jwks.json
+REDASH_JWT_AUTH_AUDIENCE=redash
+REDASH_JWT_AUTH_ALGORITHMS=RS256,ES256
+REDASH_JWT_AUTH_COOKIE_NAME=jwt_token
+REDASH_JWT_AUTH_HEADER_NAME=X-JWT-Token
+```
+
+### Remote User Authentication
+
+<Warning>
+  **Dangerous**: Only enable if you have a trusted reverse proxy that handles authentication.
+</Warning>
+
+```bash
+REDASH_REMOTE_USER_LOGIN_ENABLED=true
+REDASH_REMOTE_USER_HEADER=X-Forwarded-Remote-User
+```
+
+Requirements:
+- Trusted reverse proxy that authenticates users
+- Proxy must set or override the remote user header
+- Original headers from clients must be stripped
+
+See `/home/daytona/workspace/source/redash/settings/__init__.py:161` for warnings.
+
+## CORS (Cross-Origin Resource Sharing)
+
+Allow external websites to access the Query Result API:
+
+```bash
+REDASH_CORS_ACCESS_CONTROL_ALLOW_ORIGIN=https://example.com,https://app.example.com
+REDASH_CORS_ACCESS_CONTROL_ALLOW_CREDENTIALS=true
+REDASH_CORS_ACCESS_CONTROL_REQUEST_METHOD=GET,POST,PUT
+REDASH_CORS_ACCESS_CONTROL_ALLOW_HEADERS=Content-Type
+```
+
+### Wildcard CORS
+
+```bash
+REDASH_CORS_ACCESS_CONTROL_ALLOW_ORIGIN=*
+```
+
+<Warning>
+  Wildcard CORS allows any website to access your query results. Use with caution.
+</Warning>
+
+Implementation: `/home/daytona/workspace/source/redash/handlers/query_results.py:219`
+
+## Rate Limiting
+
+Protect against brute force attacks:
+
+```bash
+REDASH_RATELIMIT_ENABLED=true
+REDASH_THROTTLE_LOGIN_PATTERN=50/hour
+REDASH_THROTTLE_PASS_RESET_PATTERN=10/hour
+REDASH_LIMITER_STORAGE=redis://localhost:6379/0
+```
+
+Pattern format: `count/period` where period can be:
+- `second`
+- `minute`
+- `hour`
+- `day`
+
+## File Downloads
+
+Enforce file downloads instead of displaying in browser:
+
+```bash
+REDASH_ENFORCE_FILE_SAVE=true
+```
+
+## Network Security
+
+### Private Address Blocking
+
+Prevent the JSON query runner from accessing private network addresses:
+
+```bash
+REDASH_ENFORCE_PRIVATE_IP_BLOCK=true
+```
+
+Blocks access to:
+- `10.0.0.0/8`
+- `172.16.0.0/12`
+- `192.168.0.0/16`
+- `127.0.0.0/8`
+- `169.254.0.0/16`
+
+### Proxy Configuration
+
+If behind a reverse proxy:
+
+```bash
+REDASH_PROXIES_COUNT=1
+```
+
+This tells Flask to trust X-Forwarded-* headers from the proxy.
+
+## Secret Management
+
+### Environment Variables
+
+Store secrets in environment variables, not configuration files:
+
+```bash
+# Good
+export REDASH_COOKIE_SECRET=$(python -c 'import secrets; print(secrets.token_hex(32))')
+
+# Bad - don't commit secrets to git
+REDASH_COOKIE_SECRET=hardcoded-secret
+```
+
+### Using Docker Secrets
+
+```yaml
+version: '3'
+services:
+  redash:
+    image: redash/redash:latest
+    secrets:
+      - cookie_secret
+      - database_url
+    environment:
+      REDASH_COOKIE_SECRET_FILE: /run/secrets/cookie_secret
+      REDASH_DATABASE_URL_FILE: /run/secrets/database_url
+
+secrets:
+  cookie_secret:
+    file: ./secrets/cookie_secret.txt
+  database_url:
+    file: ./secrets/database_url.txt
+```
+
+### Key Rotation
+
+Rotating `REDASH_COOKIE_SECRET`:
+1. All users will be logged out
+2. Update the environment variable
+3. Restart Redash
+
+Rotating `REDASH_SECRET_KEY`:
+1. **Do not rotate** if you have existing data sources
+2. If you must rotate:
+   - Export all data source configurations
+   - Update the secret
+   - Re-create all data sources
+
+## Security Checklist
+
+### Production Deployment
+
+- [ ] Set strong `REDASH_COOKIE_SECRET` and `REDASH_SECRET_KEY`
+- [ ] Enable `REDASH_ENFORCE_HTTPS=true`
+- [ ] Enable `REDASH_ENFORCE_CSRF=true`
+- [ ] Configure `REDASH_HSTS_ENABLED=true`
+- [ ] Set `REDASH_COOKIES_SECURE=true`
+- [ ] Enable rate limiting with `REDASH_RATELIMIT_ENABLED=true`
+- [ ] Configure CSP with appropriate directives
+- [ ] Set `REDASH_FRAME_OPTIONS=deny` or `sameorigin`
+- [ ] Use TLS for database and Redis connections
+- [ ] Restrict CORS origins (avoid wildcard)
+- [ ] Enable `REDASH_ENFORCE_PRIVATE_IP_BLOCK=true`
+- [ ] Keep Redash updated to latest version
+- [ ] Regular security audits of user permissions
+- [ ] Monitor authentication logs for suspicious activity
+
+### Network Security
+
+- [ ] Run Redash behind a reverse proxy (nginx, Caddy)
+- [ ] Configure firewall to restrict access
+- [ ] Use VPN or IP allowlisting for admin access
+- [ ] Separate database and application networks
+- [ ] Enable database connection encryption
+
+### Access Control
+
+- [ ] Use SSO (SAML/OAuth) instead of passwords
+- [ ] Enforce strong password policies
+- [ ] Regular user access reviews
+- [ ] Remove inactive users
+- [ ] Use groups for permission management
+- [ ] Principle of least privilege for data sources
+
+### Monitoring
+
+- [ ] Enable audit logging
+- [ ] Monitor failed login attempts
+- [ ] Track API usage patterns
+- [ ] Set up alerts for security events
+- [ ] Regular review of query execution logs
+
+## Vulnerability Reporting
+
+If you discover a security vulnerability in Redash:
+
+1. **Do not** open a public GitHub issue
+2. Email the security team (check Redash documentation for current contact)
+3. Include:
+   - Description of the vulnerability
+   - Steps to reproduce
+   - Potential impact
+   - Suggested fix (if available)
+
+## Additional Resources
+
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- [Flask Security Best Practices](https://flask.palletsprojects.com/en/2.3.x/security/)
+- [PostgreSQL Security](https://www.postgresql.org/docs/current/security.html)
+- [Redis Security](https://redis.io/topics/security)

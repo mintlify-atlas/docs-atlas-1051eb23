@@ -1,122 +1,170 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Redash",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#fc7c64",
+    "light": "#fcb4a4",
+    "dark": "#fc7c64"
   },
   "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/2950618e-3a28-4245-b143-04f0d63bd16e.png",
+    "dark": "https://media.brand.dev/b0148bea-3999-4583-9457-fa418f725c5b.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/getredash/redash"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/getredash/redash"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Features",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "features/queries",
+              "features/visualizations",
+              "features/dashboards",
+              "features/alerts",
+              "features/query-snippets"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Data Sources",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "data-sources/overview",
+              "data-sources/connecting",
+              "data-sources/sql-databases",
+              "data-sources/nosql-databases",
+              "data-sources/cloud-services",
+              "data-sources/custom-sources"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "User Management",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "user-management/users-and-groups",
+              "user-management/authentication",
+              "user-management/permissions"
+            ]
+          },
+          {
+            "group": "Administration",
+            "pages": [
+              "admin/configuration",
+              "admin/organizations",
+              "admin/email-setup",
+              "admin/security",
+              "admin/monitoring"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/kubernetes",
+              "deployment/environment-variables",
+              "deployment/upgrading"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/api-integration",
+              "advanced/embedding",
+              "advanced/python-queries",
+              "advanced/parameterized-queries"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api/introduction",
+              "api/authentication"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Resources",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/queries",
+              "api/query-results",
+              "api/dashboards",
+              "api/visualizations",
+              "api/alerts",
+              "api/data-sources",
+              "api/users",
+              "api/groups"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Data Sources",
+        "groups": [
+          {
+            "group": "SQL Databases",
+            "pages": [
+              "sources/postgresql",
+              "sources/mysql",
+              "sources/mssql",
+              "sources/oracle",
+              "sources/sqlite"
+            ]
+          },
+          {
+            "group": "Cloud Data Warehouses",
+            "pages": [
+              "sources/bigquery",
+              "sources/redshift",
+              "sources/snowflake",
+              "sources/databricks",
+              "sources/athena"
+            ]
+          },
+          {
+            "group": "NoSQL & Analytics",
+            "pages": [
+              "sources/mongodb",
+              "sources/elasticsearch",
+              "sources/clickhouse",
+              "sources/cassandra",
+              "sources/dynamodb"
+            ]
+          },
+          {
+            "group": "Other Sources",
+            "pages": [
+              "sources/prometheus",
+              "sources/google-analytics",
+              "sources/google-sheets",
+              "sources/json-api",
+              "sources/csv"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

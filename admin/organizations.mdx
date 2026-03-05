@@ -1,0 +1,280 @@
+---
+title: Organizations
+description: Manage multiple organizations in a single Redash instance
+---
+
+Redash supports running multiple organizations (tenants) in a single deployment. This allows you to isolate data, users, and queries between different teams or customers.
+
+## Enabling Multi-Org Mode
+
+Multi-org mode is disabled by default. Enable it with:
+
+```bash
+REDASH_MULTI_ORG=true
+```
+
+<Warning>
+  Once enabled, multi-org mode changes the URL structure to include organization slugs. Plan your migration carefully.
+</Warning>
+
+## Organization Structure
+
+Each organization in Redash has:
+
+- **Unique slug**: Used in URLs (e.g., `/acme/queries`)
+- **Name**: Display name for the organization
+- **Settings**: Organization-specific configuration
+- **Users**: Members belong to one or more organizations
+- **Groups**: Used for access control within the organization
+- **Resources**: Queries, dashboards, data sources, and alerts
+
+## URL Structure
+
+### Single-Org Mode
+
+```
+https://redash.example.com/queries
+https://redash.example.com/dashboards
+```
+
+### Multi-Org Mode
+
+```
+https://redash.example.com/{org-slug}/queries
+https://redash.example.com/{org-slug}/dashboards
+```
+
+Where `{org-slug}` is the organization's unique identifier.
+
+## Creating Organizations
+
+Organizations are stored in the `organizations` table in the database.
+
+### Database Schema
+
+```sql
+CREATE TABLE organizations (
+  id SERIAL PRIMARY KEY,
+  slug VARCHAR(255) UNIQUE,
+  name VARCHAR(255),
+  settings JSONB DEFAULT '{}',
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+### Using the CLI
+
+Redash provides management commands to create organizations:
+
+```bash
+# Create a new organization
+python manage.py org create <slug> <name> <admin-email>
+
+# Example
+python manage.py org create acme "ACME Corporation" admin@acme.com
+```
+
+## Organization Settings
+
+Organizations can have custom settings that override global defaults. Settings are stored as JSONB in the database.
+
+### Available Settings
+
+Settings are defined in `/home/daytona/workspace/source/redash/settings/organization.py:48`:
+
+- `auth_password_login_enabled` - Enable password-based login
+- `auth_saml_enabled` - Enable SAML authentication
+- `auth_saml_type` - SAML authentication type
+- `auth_saml_entity_id` - SAML entity ID
+- `auth_saml_metadata_url` - SAML metadata URL
+- `auth_saml_nameid_format` - SAML NameID format
+- `auth_saml_sso_url` - SAML SSO URL
+- `auth_jwt_login_enabled` - Enable JWT authentication
+- `auth_jwt_auth_issuer` - JWT issuer
+- `auth_jwt_auth_public_certs_url` - JWT public certificates URL
+- `auth_jwt_auth_audience` - JWT audience
+- `date_format` - Date display format (default: `DD/MM/YY`)
+- `time_format` - Time display format (default: `HH:mm`)
+- `integer_format` - Integer display format (default: `0,0`)
+- `float_format` - Float display format (default: `0,0.00`)
+- `null_value` - How to display NULL values (default: `null`)
+- `feature_show_permissions_control` - Show permissions UI
+- `send_email_on_failed_scheduled_queries` - Email on query failures
+- `hide_plotly_mode_bar` - Hide Plotly mode bar
+- `disable_public_urls` - Disable public dashboard/query URLs
+
+### Setting Organization Settings
+
+Settings can be modified programmatically:
+
+```python
+from redash.models import Organization
+
+org = Organization.get_by_slug('acme')
+org.set_setting('date_format', 'MM/DD/YYYY')
+db.session.commit()
+```
+
+Or via the API:
+
+```bash
+PATCH /api/settings/organization
+Content-Type: application/json
+
+{
+  "date_format": "MM/DD/YYYY",
+  "send_email_on_failed_scheduled_queries": true
+}
+```
+
+## Organization Management
+
+### Disabling an Organization
+
+You can disable an organization without deleting it:
+
+```python
+org = Organization.get_by_slug('acme')
+org.disable()
+db.session.commit()
+```
+
+Disabled organizations:
+- Cannot be accessed by users
+- Skip scheduled query refreshes
+- Retain all data
+
+### Re-enabling an Organization
+
+```python
+org = Organization.get_by_slug('acme')
+org.enable()
+db.session.commit()
+```
+
+### Organization Status
+
+Check organization metrics via the API:
+
+```bash
+GET /{org-slug}/api/organization/status
+```
+
+Response:
+
+```json
+{
+  "object_counters": {
+    "users": 15,
+    "alerts": 8,
+    "data_sources": 4,
+    "queries": 127,
+    "dashboards": 23
+  }
+}
+```
+
+## Built-in Groups
+
+Each organization has two built-in groups:
+
+### Default Group
+
+- All new users are automatically added
+- Type: `builtin`
+- Name: `default`
+
+### Admin Group
+
+- Organization administrators
+- Type: `builtin`
+- Name: `admin`
+- Has full access to all resources
+
+See `/home/daytona/workspace/source/redash/models/organizations.py:39` for implementation.
+
+## Public Organizations
+
+Organizations can be marked as public, allowing unauthenticated access to certain resources:
+
+```python
+org.settings['is_public'] = True
+db.session.commit()
+```
+
+<Warning>
+  Use public organizations with caution. They may expose sensitive data.
+</Warning>
+
+## Google Apps Domain Restriction
+
+Restrict organization access to specific Google Apps domains:
+
+```python
+org.settings['google_apps_domains'] = ['acme.com', 'acme.org']
+db.session.commit()
+```
+
+When configured, only users with email addresses from these domains can join via Google OAuth.
+
+## Multi-Org Considerations
+
+### Authentication
+
+Users can belong to multiple organizations. When authenticating:
+
+1. User logs in with email/password or SSO
+2. If the user belongs to multiple orgs, they choose which to access
+3. Session is scoped to the selected organization
+
+### Data Isolation
+
+All resources are isolated by organization:
+
+- Queries can only access data sources in the same organization
+- Dashboards can only include visualizations from the same organization
+- Users can only see resources they have permission to access
+
+### Super Admin
+
+Super admins have access to:
+- All organizations
+- System-wide status and monitoring
+- Organization management
+
+Super admin access is granted at the user level, not per-organization.
+
+### Resource Sharing
+
+Resources cannot be shared across organizations. If you need to share:
+
+1. Export the query/dashboard
+2. Import it into the target organization
+3. Reconnect to data sources in the target org
+
+## Best Practices
+
+### Organization Naming
+
+- Use short, memorable slugs (e.g., `acme`, `contoso`)
+- Slugs are permanent and used in URLs
+- Choose names that reflect your organizational structure
+
+### Access Control
+
+- Use groups to manage permissions
+- Assign users to the appropriate groups
+- Regularly audit group memberships
+
+### Settings Management
+
+- Document organization-specific settings
+- Use consistent settings across similar organizations
+- Test authentication changes in a non-production org first
+
+### Monitoring
+
+- Monitor resource counts per organization
+- Set up alerts for unusual activity
+- Track organization growth over time

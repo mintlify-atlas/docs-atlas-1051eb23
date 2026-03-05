@@ -1,0 +1,560 @@
+---
+title: Monitoring
+description: Monitor Redash health, performance, and metrics
+---
+
+Monitor your Redash deployment to ensure reliability and track performance. Redash provides health checks, metrics, and logging capabilities.
+
+## Health Checks
+
+### Ping Endpoint
+
+Basic health check to verify Redash is responding:
+
+```bash
+GET /ping
+```
+
+Response:
+
+```
+PONG.
+```
+
+This endpoint:
+- Returns immediately
+- Does not require authentication
+- Bypasses HTTPS enforcement
+- Useful for load balancer health checks
+
+Implementation: `/home/daytona/workspace/source/redash/handlers/__init__.py:11`
+
+### Status Endpoint
+
+Detailed system status (requires super admin):
+
+```bash
+GET /status.json
+```
+
+Response:
+
+```json
+{
+  "version": "10.1.0",
+  "redis_used_memory": 2097152,
+  "redis_used_memory_human": "2M",
+  "queries_count": 1247,
+  "query_results_count": 3821,
+  "unused_query_results_count": 892,
+  "dashboards_count": 87,
+  "widgets_count": 341,
+  "manager": {
+    "outdated_queries_count": "12",
+    "query_ids": "[1,5,9,...]",
+    "queues": {
+      "queries": {"size": 5},
+      "scheduled_queries": {"size": 0},
+      "schemas": {"size": 2}
+    }
+  },
+  "database_metrics": {
+    "metrics": [
+      ["Query Results Size", 524288000],
+      ["Redash DB Size", 1073741824]
+    ]
+  }
+}
+```
+
+Implementation: `/home/daytona/workspace/source/redash/monitor.py:49`
+
+### Organization Status
+
+Get metrics for a specific organization:
+
+```bash
+GET /{org-slug}/api/organization/status
+```
+
+Response:
+
+```json
+{
+  "object_counters": {
+    "users": 15,
+    "alerts": 8,
+    "data_sources": 4,
+    "queries": 127,
+    "dashboards": 23
+  }
+}
+```
+
+Implementation: `/home/daytona/workspace/source/redash/handlers/organization.py:9`
+
+## Metrics with StatsD
+
+Redash can send metrics to a StatsD server for monitoring and alerting.
+
+### StatsD Configuration
+
+```bash
+REDASH_STATSD_HOST=127.0.0.1
+REDASH_STATSD_PORT=8125
+REDASH_STATSD_PREFIX=redash
+REDASH_STATSD_USE_TAGS=false  # InfluxDB/Telegraf style tags
+```
+
+### Available Metrics
+
+#### Request Metrics
+
+```
+redash.requests.{endpoint}.{method}  # Timing in milliseconds
+```
+
+Tracks:
+- Request duration
+- Endpoint and HTTP method
+- Automatically collected for all requests
+
+Implementation: `/home/daytona/workspace/source/redash/metrics/request.py:38`
+
+#### Database Metrics
+
+```
+redash.db.{table}.{action}  # Timing in milliseconds
+```
+
+Tracks:
+- Database query duration
+- Table name and operation (select, insert, update, delete)
+
+Implementation: `/home/daytona/workspace/source/redash/metrics/database.py:51`
+
+#### RQ Job Metrics
+
+```
+redash.rq.jobs.created.{queue}     # Counter
+redash.rq.jobs.started.{queue}     # Counter
+redash.rq.jobs.running.{queue}     # Gauge
+redash.rq.jobs.finished.{queue}    # Counter
+redash.rq.jobs.failed.{queue}      # Counter
+```
+
+Queues:
+- `queries` - Ad-hoc query execution
+- `scheduled_queries` - Scheduled query refreshes
+- `schemas` - Data source schema refresh
+- `default` - Miscellaneous tasks
+
+Implementation: `/home/daytona/workspace/source/redash/tasks/worker.py:39`
+
+#### Schema Refresh Metrics
+
+```
+redash.refresh_schema.success   # Counter
+redash.refresh_schema.timeout   # Counter
+redash.refresh_schema.error     # Counter
+```
+
+Implementation: `/home/daytona/workspace/source/redash/tasks/queries/maintenance.py:173`
+
+### Grafana Dashboard
+
+Use Grafana with StatsD to visualize Redash metrics:
+
+1. **Install Graphite or InfluxDB** to collect StatsD metrics
+2. **Configure Redash** to send metrics
+3. **Create Grafana dashboards** with panels for:
+   - Request rate and latency
+   - Query execution times
+   - Job queue sizes
+   - Database performance
+   - Error rates
+
+Example queries:
+
+```sql
+-- Request rate (InfluxDB)
+SELECT mean("value") 
+FROM "redash.requests.query.get" 
+WHERE time > now() - 1h 
+GROUP BY time(1m)
+
+-- Failed jobs (InfluxDB)
+SELECT sum("value") 
+FROM "redash.rq.jobs.failed.queries" 
+WHERE time > now() - 24h 
+GROUP BY time(1h)
+```
+
+## Logging
+
+### Log Configuration
+
+```bash
+REDASH_LOG_LEVEL=INFO              # DEBUG, INFO, WARNING, ERROR, CRITICAL
+REDASH_LOG_STDOUT=false            # Log to stdout instead of file
+REDASH_LOG_PREFIX=""               # Prefix for log messages
+REDASH_LOG_FORMAT="[%(asctime)s][PID:%(process)d][%(levelname)s][%(name)s] %(message)s"
+```
+
+### RQ Worker Job Logs
+
+Customize logging for background jobs:
+
+```bash
+REDASH_RQ_WORKER_JOB_LOG_FORMAT="[%(asctime)s][PID:%(process)d][%(levelname)s][%(name)s] job.func_name=%(job_func_name)s job.id=%(job_id)s %(message)s"
+```
+
+### Log Levels
+
+- **DEBUG** - Detailed diagnostic information
+- **INFO** - General informational messages
+- **WARNING** - Warning messages for potentially harmful situations
+- **ERROR** - Error messages for failures
+- **CRITICAL** - Critical failures that may cause shutdown
+
+### Viewing Logs
+
+#### Docker Deployment
+
+```bash
+# View server logs
+docker logs redash-server
+
+# Follow logs in real-time
+docker logs -f redash-server
+
+# View worker logs
+docker logs redash-worker
+
+# View scheduler logs
+docker logs redash-scheduler
+
+# Filter for errors only
+docker logs redash-server 2>&1 | grep ERROR
+```
+
+#### Systemd Service
+
+```bash
+# View logs
+sudo journalctl -u redash-server
+
+# Follow logs
+sudo journalctl -u redash-server -f
+
+# View logs from last hour
+sudo journalctl -u redash-server --since "1 hour ago"
+```
+
+### Structured Logging
+
+Redash uses Python's logging module. Key loggers:
+
+- `redash` - Main application logger
+- `metrics` - Metrics logging
+- `rq.worker` - RQ worker logs
+- `sqlalchemy.engine` - Database queries (when enabled)
+
+### Metrics Logger
+
+Enable detailed metrics logging:
+
+```python
+import logging
+logging.getLogger('metrics').setLevel(logging.DEBUG)
+```
+
+Logs include:
+- Request duration
+- Database query duration
+- Table and action for each query
+
+Implementation: `/home/daytona/workspace/source/redash/metrics/request.py:9`
+
+## Background Job Monitoring
+
+### RQ Dashboard
+
+Redash uses RQ (Redis Queue) for background jobs. Monitor queues:
+
+```python
+from redash.monitor import rq_status
+
+status = rq_status()
+print(status['queues'])  # Queue sizes and running jobs
+print(status['workers']) # Worker information
+```
+
+### Queue Status
+
+Check queue sizes:
+
+```python
+from redash.monitor import get_queues_status
+
+queues = get_queues_status()
+for queue_name, info in queues.items():
+    print(f"{queue_name}: {info['size']} jobs")
+```
+
+### Worker Status
+
+Monitor RQ workers:
+
+```python
+from redash.monitor import rq_workers
+
+for worker in rq_workers():
+    print(f"Worker: {worker['name']}")
+    print(f"  State: {worker['state']}")
+    print(f"  Current Job: {worker['current_job']}")
+    print(f"  Successful: {worker['successful_jobs']}")
+    print(f"  Failed: {worker['failed_jobs']}")
+```
+
+Implementation: `/home/daytona/workspace/source/redash/monitor.py:100`
+
+## Database Monitoring
+
+### Connection Pool
+
+Monitor database connection pool usage:
+
+```python
+from redash.models import db
+
+pool = db.engine.pool
+print(f"Pool size: {pool.size()}")
+print(f"Checked out: {pool.checkedout()}")
+print(f"Overflow: {pool.overflow()}")
+print(f"Checked in: {pool.checkedin()}")
+```
+
+### Database Size
+
+Track database growth:
+
+```python
+from redash.monitor import get_db_sizes
+
+for metric_name, size in get_db_sizes():
+    print(f"{metric_name}: {size / 1024 / 1024:.2f} MB")
+```
+
+Metrics:
+- Query Results Size
+- Redash DB Size
+
+Implementation: `/home/daytona/workspace/source/redash/monitor.py:33`
+
+### Query Performance
+
+Enable SQLAlchemy query logging:
+
+```bash
+REDASH_SQLALCHEMY_ECHO=true  # Warning: Very verbose
+```
+
+Or in Python:
+
+```python
+import logging
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+```
+
+## Redis Monitoring
+
+### Redis Status
+
+Check Redis memory usage:
+
+```python
+from redash.monitor import get_redis_status
+
+status = get_redis_status()
+print(f"Used memory: {status['redis_used_memory_human']}")
+```
+
+### Redis Info
+
+Get detailed Redis information:
+
+```python
+from redash import redis_connection
+
+info = redis_connection.info()
+print(f"Connected clients: {info['connected_clients']}")
+print(f"Used memory: {info['used_memory_human']}")
+print(f"Total commands: {info['total_commands_processed']}")
+```
+
+## Alerting
+
+### Failed Query Alerts
+
+Enable email notifications for failed scheduled queries:
+
+```bash
+# Via organization settings
+PATCH /api/settings/organization
+{
+  "send_email_on_failed_scheduled_queries": true
+}
+```
+
+Configuration:
+
+```bash
+REDASH_SEND_FAILURE_EMAIL_INTERVAL=60        # Minutes between emails
+REDASH_MAX_FAILURE_REPORTS_PER_QUERY=100     # Max reports per query
+```
+
+### External Monitoring
+
+Integrate with external monitoring services:
+
+#### Uptime Monitoring
+
+```bash
+# Pingdom, UptimeRobot, etc.
+GET https://redash.example.com/ping
+```
+
+#### Application Performance Monitoring
+
+Integrate with APM services:
+
+- **Sentry** - Error tracking
+  ```bash
+  REDASH_SENTRY_DSN=https://...@sentry.io/...
+  REDASH_SENTRY_ENVIRONMENT=production
+  ```
+
+- **New Relic** - Application performance
+- **Datadog** - Infrastructure and application monitoring
+
+## Performance Metrics
+
+### Key Metrics to Track
+
+#### Application Health
+
+- Request rate (requests/second)
+- Response time (p50, p95, p99)
+- Error rate (4xx, 5xx responses)
+- Active user sessions
+
+#### Query Execution
+
+- Query execution time
+- Query success/failure rate
+- Number of queries per data source
+- Query result cache hit rate
+
+#### Background Jobs
+
+- Queue depth (jobs waiting)
+- Job execution time
+- Job failure rate
+- Worker utilization
+
+#### Resources
+
+- CPU usage
+- Memory usage
+- Database connections
+- Redis memory usage
+- Disk space (query results)
+
+### Dashboards
+
+Create monitoring dashboards for:
+
+1. **System Overview**
+   - Request rate
+   - Error rate
+   - Response times
+   - Active users
+
+2. **Query Performance**
+   - Execution times by data source
+   - Failed queries
+   - Slow queries
+   - Cache hit rate
+
+3. **Resource Usage**
+   - CPU and memory
+   - Database connections
+   - Redis memory
+   - Disk space
+
+4. **Background Jobs**
+   - Queue sizes
+   - Worker status
+   - Job failure rate
+   - Scheduled query refreshes
+
+## Troubleshooting
+
+### High Memory Usage
+
+1. Check Redis memory: `redis_used_memory_human`
+2. Review query result sizes
+3. Enable query results cleanup
+4. Reduce query results TTL
+
+### Slow Queries
+
+1. Check database query logs
+2. Review data source performance
+3. Optimize query SQL
+4. Add database indexes
+
+### Queue Backlog
+
+1. Check worker status
+2. Increase number of workers
+3. Review failed jobs
+4. Increase job timeout limits
+
+### High Error Rate
+
+1. Review application logs
+2. Check data source connectivity
+3. Monitor external dependencies
+4. Review recent configuration changes
+
+## Best Practices
+
+### Regular Monitoring
+
+- Set up automated alerts for critical metrics
+- Review dashboards daily
+- Track trends over time
+- Document normal baseline values
+
+### Log Management
+
+- Rotate logs regularly
+- Archive old logs
+- Use centralized logging (ELK, Splunk, etc.)
+- Set appropriate log levels
+
+### Capacity Planning
+
+- Monitor resource trends
+- Plan for growth
+- Test scaling strategies
+- Document resource requirements
+
+### Incident Response
+
+- Define incident severity levels
+- Create runbooks for common issues
+- Set up on-call rotation
+- Conduct post-incident reviews

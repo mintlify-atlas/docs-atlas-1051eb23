@@ -1,0 +1,358 @@
+---
+title: "Embedding Visualizations"
+description: "Embed Redash dashboards and visualizations in external applications"
+---
+
+## Overview
+
+Redash allows you to embed visualizations and dashboards into external applications, making it easy to surface data insights in custom interfaces, internal tools, or public websites.
+
+## Embedding Methods
+
+There are two primary ways to embed Redash content:
+
+1. **Authenticated embedding** - For internal applications where users are logged into Redash
+2. **Public sharing** - For sharing with external users without Redash accounts
+
+## Authenticated Embedding
+
+Embed visualizations for logged-in users using iframe embedding.
+
+### Embed URL Structure
+
+```
+https://your-redash.example.com/<org_slug>/embed/query/<query_id>/visualization/<visualization_id>
+```
+
+Example:
+
+```html
+<iframe
+  src="https://redash.company.com/default/embed/query/42/visualization/83"
+  width="800"
+  height="600"
+  frameborder="0"
+></iframe>
+```
+
+### Requirements
+
+<Note>
+Users must be logged into Redash for authenticated embedding to work. The iframe will inherit the user's session.
+</Note>
+
+Authenticated embedding:
+- Requires user login to Redash
+- Respects data source permissions
+- Tracks view events with referrer information
+- Supports CSP (Content Security Policy) configuration
+
+### CSP Configuration
+
+To allow embedding in external domains, configure your Content Security Policy:
+
+```python
+# Allow embedding from specific domains
+frame_ancestors = "'self' https://your-app.example.com"
+```
+
+The embed handler applies the `@csp_allows_embeding` decorator to ensure proper CSP headers.
+
+## Public Dashboard Sharing
+
+Share dashboards publicly without requiring authentication.
+
+### Enable Public Access
+
+1. Open your dashboard
+2. Click the **Share** button
+3. Toggle **Allow public access**
+4. Copy the generated public URL
+
+### Public Dashboard URL
+
+```
+https://your-redash.example.com/<org_slug>/public/dashboards/<token>
+```
+
+The token is a unique API key generated for the dashboard.
+
+### Embed Public Dashboard
+
+```html
+<iframe
+  src="https://redash.company.com/default/public/dashboards/abc123xyz?embed"
+  width="100%"
+  height="800"
+  frameborder="0"
+></iframe>
+```
+
+<Tip>
+Add `?embed` query parameter to hide Redash chrome and show only the dashboard content.
+</Tip>
+
+### Public Sharing Options
+
+When accessing public dashboards:
+
+- Add `?embed` to remove Redash navigation/header
+- The system tracks views as "headless" when embed parameter is present
+- Public dashboards use API key authentication internally
+
+## Query Result API Embedding
+
+Embed live query results using the API endpoints.
+
+### Get Query Results
+
+Fetch results via API and render in your application:
+
+```javascript
+fetch('https://redash.company.com/api/queries/42/results', {
+  headers: {
+    'Authorization': 'Key YOUR_API_KEY'
+  }
+})
+.then(response => response.json())
+.then(data => {
+  const rows = data.query_result.data.rows;
+  const columns = data.query_result.data.columns;
+  // Render your custom visualization
+  renderChart(rows, columns);
+});
+```
+
+### Download Results
+
+Embed download links for CSV/Excel exports:
+
+```html
+<a href="https://redash.company.com/api/queries/42/results.csv?api_key=YOUR_KEY">
+  Download CSV
+</a>
+<a href="https://redash.company.com/api/queries/42/results.xlsx?api_key=YOUR_KEY">
+  Download Excel
+</a>
+```
+
+## Custom Visualization Integration
+
+Build custom visualizations using Redash data:
+
+### React Example
+
+```jsx
+import React, { useEffect, useState } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+
+function RedashChart({ queryId, apiKey }) {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`https://redash.company.com/api/queries/${queryId}/results`, {
+      headers: { 'Authorization': `Key ${apiKey}` }
+    })
+    .then(res => res.json())
+    .then(result => {
+      setData(result.query_result.data.rows);
+      setLoading(false);
+    });
+  }, [queryId, apiKey]);
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <BarChart width={600} height={400} data={data}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis dataKey="name" />
+      <YAxis />
+      <Tooltip />
+      <Bar dataKey="value" fill="#8884d8" />
+    </BarChart>
+  );
+}
+
+export default RedashChart;
+```
+
+### Vue.js Example
+
+```vue
+<template>
+  <div>
+    <div v-if="loading">Loading...</div>
+    <table v-else class="data-table">
+      <thead>
+        <tr>
+          <th v-for="column in columns" :key="column.name">
+            {{ column.friendly_name }}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="(row, index) in rows" :key="index">
+          <td v-for="column in columns" :key="column.name">
+            {{ row[column.name] }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</template>
+
+<script>
+export default {
+  props: ['queryId', 'apiKey'],
+  data() {
+    return {
+      rows: [],
+      columns: [],
+      loading: true
+    };
+  },
+  mounted() {
+    fetch(`https://redash.company.com/api/queries/${this.queryId}/results`, {
+      headers: { 'Authorization': `Key ${this.apiKey}` }
+    })
+    .then(res => res.json())
+    .then(result => {
+      this.rows = result.query_result.data.rows;
+      this.columns = result.query_result.data.columns;
+      this.loading = false;
+    });
+  }
+};
+</script>
+```
+
+## Parameterized Embedded Queries
+
+Pass parameters to embedded visualizations:
+
+```html
+<iframe
+  src="https://redash.company.com/default/embed/query/42/visualization/83?p_start_date=2024-01-01&p_status=active"
+  width="800"
+  height="600"
+></iframe>
+```
+
+Parameters are prefixed with `p_` in the URL.
+
+## Responsive Embedding
+
+Make embedded content responsive:
+
+```html
+<style>
+  .redash-embed {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    height: 0;
+    overflow: hidden;
+  }
+  
+  .redash-embed iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+
+<div class="redash-embed">
+  <iframe
+    src="https://redash.company.com/default/public/dashboards/abc123xyz?embed"
+    frameborder="0"
+  ></iframe>
+</div>
+```
+
+## Security Considerations
+
+<Warning>
+**API Key Security**: Never expose API keys in client-side code for public websites. Use server-side proxies to authenticate requests.
+</Warning>
+
+### Best Practices
+
+1. **Use query-specific API keys** instead of user API keys for sharing
+2. **Regenerate API keys** if compromised:
+   ```bash
+   POST /api/queries/<query_id>/regenerate_api_key
+   ```
+3. **Configure CORS** to restrict which domains can access your API
+4. **Use public sharing** for truly public dashboards instead of embedding with API keys
+
+### Server-Side Proxy Example
+
+```python
+# Flask proxy to hide API keys
+from flask import Flask, jsonify
+import requests
+
+app = Flask(__name__)
+REDASH_API_KEY = "your_secret_key"  # Store in environment variable
+REDASH_URL = "https://redash.company.com"
+
+@app.route('/api/query/<int:query_id>/results')
+def get_query_results(query_id):
+    response = requests.get(
+        f"{REDASH_URL}/api/queries/{query_id}/results",
+        headers={"Authorization": f"Key {REDASH_API_KEY}"}
+    )
+    return jsonify(response.json())
+```
+
+## Event Tracking
+
+Redash tracks embedding events with:
+
+- Action: `view`
+- Object type: `visualization` or `dashboard`
+- Embed flag: `True`
+- Referrer: Source page URL
+- Public flag: For public dashboard access
+- Headless flag: When `?embed` parameter is used
+
+This helps you understand how embedded content is being used.
+
+## Troubleshooting
+
+### iframe Not Loading
+
+1. Check CSP configuration - ensure parent domain is allowed
+2. Verify user is logged in (for authenticated embedding)
+3. Check browser console for CORS errors
+
+### Data Not Updating
+
+Embedded visualizations use cached query results. To force refresh:
+
+1. Manually refresh the query in Redash
+2. Set query to run on a schedule
+3. Use API with `max_age: 0` for real-time data
+
+### Permission Errors
+
+Ensure:
+- User has access to the data source (authenticated embedding)
+- API key is valid and has permissions (API integration)
+- Dashboard public sharing is enabled (public embedding)
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="API Integration" icon="code" href="/advanced/api-integration">
+  Automate workflows with the REST API
+</Card>
+
+<Card title="Parameterized Queries" icon="sliders" href="/advanced/parameterized-queries">
+  Add dynamic parameters to queries
+</Card>
+
+</CardGroup>

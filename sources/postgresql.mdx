@@ -1,0 +1,185 @@
+---
+title: PostgreSQL
+description: Connect Redash to PostgreSQL databases
+---
+
+## Overview
+
+The PostgreSQL data source allows you to connect to PostgreSQL databases and execute queries. It supports standard PostgreSQL features including schemas, materialized views, and various SSL/TLS configurations.
+
+## Connection Setup
+
+### Basic Configuration
+
+To connect to a PostgreSQL database, you'll need to provide the following information:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `dbname` | string | Yes | - | Database name to connect to |
+| `host` | string | No | `127.0.0.1` | Database server hostname or IP address |
+| `port` | number | No | `5432` | Database server port |
+| `user` | string | No | - | Username for authentication |
+| `password` | string | No | - | Password for authentication |
+| `dsn` | string | No | `application_name=redash` | Additional connection parameters in DSN format |
+
+### Connection String Examples
+
+**Local database:**
+```
+host: 127.0.0.1
+port: 5432
+user: myuser
+password: mypassword
+dbname: mydatabase
+```
+
+**Remote database:**
+```
+host: db.example.com
+port: 5432
+user: redash
+password: secure_password
+dbname: analytics
+```
+
+**With additional DSN parameters:**
+```
+host: localhost
+port: 5432
+user: postgres
+dbname: production
+dsn: application_name=redash&connect_timeout=10
+```
+
+<Note>
+DSN parameters should not contain `user`, `password`, `host`, `port`, or `dbname` as these are set through dedicated fields.
+</Note>
+
+## SSL/TLS Configuration
+
+PostgreSQL supports multiple SSL modes for secure connections:
+
+| SSL Mode | Description |
+|----------|-------------|
+| `disable` | No SSL connection |
+| `allow` | Try non-SSL first, then SSL if required |
+| `prefer` | Try SSL first, then non-SSL if unavailable (default) |
+| `require` | Require SSL connection |
+| `verify-ca` | Require SSL and verify server certificate against CA |
+| `verify-full` | Require SSL, verify certificate and hostname |
+
+### SSL Certificate Files
+
+For `verify-ca` and `verify-full` modes, you can provide SSL certificates:
+
+| Field | Description |
+|-------|-------------|
+| `sslrootcertFile` | Base64-encoded SSL root certificate |
+| `sslcertFile` | Base64-encoded SSL client certificate |
+| `sslkeyFile` | Base64-encoded SSL client key |
+
+<Note>
+Certificate files should be base64-encoded. Redash will decode and write them to temporary files during connection.
+</Note>
+
+### SSL Configuration Example
+
+```
+host: secure-db.example.com
+port: 5432
+user: redash
+password: password
+dbname: production
+sslmode: verify-full
+sslrootcertFile: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t...
+```
+
+## Query Features
+
+### Schema Support
+
+The PostgreSQL data source automatically discovers:
+
+- Tables and views from all schemas (excluding `pg_catalog` and `information_schema`)
+- Materialized views
+- Column names and data types
+
+Schema names are included in table names except for the `public` schema (unless there's a naming conflict).
+
+### Data Type Mapping
+
+PostgreSQL types are mapped to Redash types:
+
+| PostgreSQL Type | Redash Type |
+|----------------|-------------|
+| `smallint`, `integer`, `bigint` | Integer |
+| `real`, `double precision`, `numeric` | Float |
+| `boolean` | Boolean |
+| `date` | Date |
+| `timestamp`, `timestamptz` | DateTime |
+| `text`, `varchar`, `char`, arrays | String |
+
+### Special Features
+
+- **Asynchronous connections**: Queries run asynchronously to support cancellation
+- **Range types**: PostgreSQL range types are serialized to string format
+- **Query cancellation**: Long-running queries can be interrupted
+- **Schema privileges**: Only tables and schemas you have access to are shown
+
+## Configuration Schema Reference
+
+Complete configuration schema from `redash/query_runner/pg.py:154-190`:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "user": {"type": "string"},
+        "password": {"type": "string"},
+        "host": {"type": "string", "default": "127.0.0.1"},
+        "port": {"type": "number", "default": 5432},
+        "dbname": {"type": "string", "title": "Database Name"},
+        "dsn": {"type": "string", "default": "application_name=redash"},
+        "sslmode": {
+            "type": "string",
+            "default": "prefer",
+            "options": ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
+        },
+        "sslrootcertFile": {"type": "string"},
+        "sslcertFile": {"type": "string"},
+        "sslkeyFile": {"type": "string"}
+    },
+    "required": ["dbname"]
+}
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+**"Connection refused"**
+- Verify the host and port are correct
+- Check that PostgreSQL is accepting connections from your Redash server
+- Ensure `pg_hba.conf` allows connections from your IP
+
+**"SSL connection required"**
+- Set `sslmode` to `require` or higher
+- Verify SSL is enabled in PostgreSQL configuration
+
+**"Permission denied for schema"**
+- Grant appropriate privileges to the user:
+  ```sql
+  GRANT USAGE ON SCHEMA schema_name TO redash_user;
+  GRANT SELECT ON ALL TABLES IN SCHEMA schema_name TO redash_user;
+  ```
+
+### Query Errors
+
+**"Query interrupted. Please retry."**
+- The query was cancelled or timed out
+- Try optimizing your query or increasing timeout settings
+
+## Related Data Sources
+
+- **Redshift**: Amazon's PostgreSQL-based data warehouse (similar configuration)
+- **CockroachDB**: PostgreSQL-compatible distributed database

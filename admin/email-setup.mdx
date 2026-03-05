@@ -1,0 +1,344 @@
+---
+title: Email Setup
+description: Configure SMTP for sending emails from Redash
+---
+
+Redash uses email for:
+- User invitations
+- Password resets
+- Alert notifications
+- Scheduled query failure reports
+
+Email functionality requires a configured SMTP server.
+
+## SMTP Configuration
+
+Configure SMTP using environment variables:
+
+```bash
+REDASH_MAIL_SERVER=smtp.example.com
+REDASH_MAIL_PORT=587
+REDASH_MAIL_USE_TLS=true
+REDASH_MAIL_USE_SSL=false
+REDASH_MAIL_USERNAME=user@example.com
+REDASH_MAIL_PASSWORD=secret
+REDASH_MAIL_DEFAULT_SENDER=redash@example.com
+```
+
+### Required Settings
+
+<ParamField path="REDASH_MAIL_DEFAULT_SENDER" type="string" required>
+  Email address to use as the "From" address. This is the only required setting for email to work.
+</ParamField>
+
+<ParamField path="REDASH_MAIL_SERVER" type="string" default="localhost">
+  SMTP server hostname or IP address.
+</ParamField>
+
+<ParamField path="REDASH_MAIL_PORT" type="integer" default="25">
+  SMTP server port. Common values:
+  - `25` - Standard SMTP (often blocked)
+  - `587` - SMTP with STARTTLS (recommended)
+  - `465` - SMTP with SSL/TLS
+</ParamField>
+
+### TLS/SSL Settings
+
+<ParamField path="REDASH_MAIL_USE_TLS" type="boolean" default="false">
+  Use STARTTLS to upgrade connection to TLS. Use with port 587.
+</ParamField>
+
+<ParamField path="REDASH_MAIL_USE_SSL" type="boolean" default="false">
+  Use SSL/TLS from the start. Use with port 465.
+</ParamField>
+
+<Warning>
+  Do not enable both `MAIL_USE_TLS` and `MAIL_USE_SSL`. Choose one based on your SMTP server.
+</Warning>
+
+### Authentication
+
+<ParamField path="REDASH_MAIL_USERNAME" type="string">
+  Username for SMTP authentication. Often the same as the sender email address.
+</ParamField>
+
+<ParamField path="REDASH_MAIL_PASSWORD" type="string">
+  Password for SMTP authentication.
+</ParamField>
+
+### Advanced Settings
+
+<ParamField path="REDASH_MAIL_MAX_EMAILS" type="integer">
+  Maximum number of emails to send per SMTP connection. Set to `None` for no limit.
+</ParamField>
+
+<ParamField path="REDASH_MAIL_ASCII_ATTACHMENTS" type="boolean" default="false">
+  Convert attachment filenames to ASCII.
+</ParamField>
+
+## Provider Examples
+
+### Gmail
+
+```bash
+REDASH_MAIL_SERVER=smtp.gmail.com
+REDASH_MAIL_PORT=587
+REDASH_MAIL_USE_TLS=true
+REDASH_MAIL_USERNAME=your-email@gmail.com
+REDASH_MAIL_PASSWORD=your-app-password
+REDASH_MAIL_DEFAULT_SENDER=your-email@gmail.com
+```
+
+<Note>
+  Gmail requires an [App Password](https://support.google.com/accounts/answer/185833) instead of your regular password.
+</Note>
+
+### SendGrid
+
+```bash
+REDASH_MAIL_SERVER=smtp.sendgrid.net
+REDASH_MAIL_PORT=587
+REDASH_MAIL_USE_TLS=true
+REDASH_MAIL_USERNAME=apikey
+REDASH_MAIL_PASSWORD=your-sendgrid-api-key
+REDASH_MAIL_DEFAULT_SENDER=redash@yourdomain.com
+```
+
+### Amazon SES
+
+```bash
+REDASH_MAIL_SERVER=email-smtp.us-east-1.amazonaws.com
+REDASH_MAIL_PORT=587
+REDASH_MAIL_USE_TLS=true
+REDASH_MAIL_USERNAME=your-smtp-username
+REDASH_MAIL_PASSWORD=your-smtp-password
+REDASH_MAIL_DEFAULT_SENDER=redash@yourdomain.com
+```
+
+<Note>
+  Verify your sender email address in the [SES console](https://console.aws.amazon.com/ses/) before sending.
+</Note>
+
+### Mailgun
+
+```bash
+REDASH_MAIL_SERVER=smtp.mailgun.org
+REDASH_MAIL_PORT=587
+REDASH_MAIL_USE_TLS=true
+REDASH_MAIL_USERNAME=postmaster@yourdomain.mailgun.org
+REDASH_MAIL_PASSWORD=your-mailgun-password
+REDASH_MAIL_DEFAULT_SENDER=redash@yourdomain.com
+```
+
+### Office 365
+
+```bash
+REDASH_MAIL_SERVER=smtp.office365.com
+REDASH_MAIL_PORT=587
+REDASH_MAIL_USE_TLS=true
+REDASH_MAIL_USERNAME=your-email@yourdomain.com
+REDASH_MAIL_PASSWORD=your-password
+REDASH_MAIL_DEFAULT_SENDER=your-email@yourdomain.com
+```
+
+## Alert Email Configuration
+
+### Host URL
+
+Set your Redash URL for links in emails:
+
+```bash
+REDASH_HOST=https://redash.example.com
+```
+
+### Alert Email Templates
+
+#### Subject Template
+
+Customize the subject line for alert emails:
+
+```bash
+REDASH_ALERTS_DEFAULT_MAIL_SUBJECT_TEMPLATE="Alert: {alert_name} changed status to {state}"
+```
+
+Available variables:
+- `{alert_name}` - Name of the alert
+- `{state}` - New state (triggered, ok, unknown)
+
+#### Body Template
+
+Customize the email body template:
+
+```bash
+REDASH_ALERTS_DEFAULT_MAIL_BODY_TEMPLATE_FILE=/path/to/template.html
+```
+
+Default template location: `templates/emails/alert.html`
+
+### Failure Notifications
+
+Configure email notifications for failed scheduled queries:
+
+```bash
+REDASH_SEND_FAILURE_EMAIL_INTERVAL=60        # Minutes between failure emails
+REDASH_MAX_FAILURE_REPORTS_PER_QUERY=100     # Max failure reports per query
+```
+
+Enable per-organization:
+
+```bash
+# Via organization settings API
+PATCH /api/settings/organization
+{
+  "send_email_on_failed_scheduled_queries": true
+}
+```
+
+## Testing Email Configuration
+
+Verify email is working by:
+
+1. **Inviting a user**:
+   - Go to Settings → Users
+   - Click "New User"
+   - Enter an email address
+   - Click "Create" and then "Send Invite"
+
+2. **Testing from Python**:
+
+```python
+from redash import settings, mail
+from flask_mail import Message
+
+msg = Message(
+    subject="Test Email",
+    sender=settings.MAIL_DEFAULT_SENDER,
+    recipients=["test@example.com"],
+    body="This is a test email from Redash."
+)
+
+mail.send(msg)
+```
+
+3. **Check logs**:
+
+```bash
+# Look for email-related errors
+docker logs redash-server | grep -i mail
+```
+
+## Checking Email Configuration
+
+Redash provides a helper function to check if email is configured:
+
+```python
+from redash.settings import email_server_is_configured
+
+if email_server_is_configured():
+    print("Email is configured")
+else:
+    print("Email is not configured")
+```
+
+See `/home/daytona/workspace/source/redash/settings/__init__.py:249` for implementation.
+
+## Troubleshooting
+
+### Emails Not Sending
+
+1. **Check `MAIL_DEFAULT_SENDER` is set**:
+   ```bash
+   echo $REDASH_MAIL_DEFAULT_SENDER
+   ```
+
+2. **Verify SMTP credentials**:
+   - Test with an SMTP client like `swaks` or `telnet`
+   - Check username and password are correct
+
+3. **Check firewall rules**:
+   - Ensure outbound connections to SMTP port are allowed
+   - Common ports: 25, 587, 465
+
+4. **Review logs**:
+   ```bash
+   docker logs redash-server --tail 100 | grep -i mail
+   ```
+
+### TLS/SSL Errors
+
+- Verify you're using the correct port for your TLS/SSL setting
+- Try switching between `MAIL_USE_TLS` and `MAIL_USE_SSL`
+- Check if your SMTP server requires STARTTLS
+
+### Authentication Failures
+
+- Some providers require app-specific passwords (Gmail, Yahoo)
+- Verify the username format (some use email, others use just the local part)
+- Check if two-factor authentication is blocking access
+
+### Emails in Spam
+
+- Configure SPF, DKIM, and DMARC records for your domain
+- Use a reputable email provider
+- Set a proper `MAIL_DEFAULT_SENDER` with your domain
+
+## Security Best Practices
+
+### Use Environment Variables
+
+Never hardcode SMTP credentials in configuration files:
+
+```bash
+# Good: Use environment variables
+REDASH_MAIL_PASSWORD=$SMTP_PASSWORD
+
+# Bad: Hardcoded password
+REDASH_MAIL_PASSWORD=plaintext-password
+```
+
+### Use TLS
+
+Always use TLS to encrypt SMTP connections:
+
+```bash
+REDASH_MAIL_USE_TLS=true  # Recommended
+```
+
+### Restrict Sender
+
+Use a dedicated email address for Redash:
+
+```bash
+REDASH_MAIL_DEFAULT_SENDER=redash-notifications@example.com
+```
+
+### Monitor Usage
+
+- Track email send rates
+- Set up alerts for unusual email volume
+- Monitor for bounce rates and spam complaints
+
+## Email Flow
+
+### User Invitations
+
+1. Admin creates a new user or clicks "Send Invite"
+2. Redash generates an invitation token
+3. Email sent with a link containing the token
+4. User clicks link and sets their password
+5. Token expires after 7 days (configurable with `REDASH_INVITATION_TOKEN_MAX_AGE`)
+
+### Alert Notifications
+
+1. Scheduled query runs and alert is evaluated
+2. If state changes, alert is triggered
+3. Email sent to all subscribers
+4. Email includes query results and alert details
+
+### Password Resets
+
+1. User clicks "Forgot Password"
+2. Redash generates a reset token
+3. Email sent with reset link
+4. User clicks link and sets new password
+5. Token expires based on application settings

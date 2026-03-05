@@ -1,0 +1,586 @@
+---
+title: Groups
+description: Manage user groups and permissions
+---
+
+## Overview
+
+Groups are used to organize users and control access to data sources, queries, and dashboards. Every user belongs to at least one group, and permissions are managed at the group level.
+
+## List Groups
+
+Retrieve all groups accessible to the user.
+
+```bash
+GET /api/groups
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/groups
+```
+
+### Response
+
+```json
+[
+  {
+    "id": 1,
+    "name": "admin",
+    "type": "builtin",
+    "permissions": ["admin"],
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": 2,
+    "name": "default",
+    "type": "builtin",
+    "permissions": ["create_dashboard", "create_query", "edit_dashboard", "edit_query", "view_query", "view_source", "execute_query", "list_users", "list_dashboards", "list_alerts", "list_data_sources"],
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": 5,
+    "name": "Analysts",
+    "type": "regular",
+    "permissions": [],
+    "created_at": "2024-01-15T10:00:00Z"
+  }
+]
+```
+
+<Note>
+  Non-admin users only see groups they belong to.
+</Note>
+
+## Get Group
+
+Retrieve a specific group.
+
+```bash
+GET /api/groups/<group_id>
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/groups/5
+```
+
+### Response Fields
+
+<ResponseField name="id" type="number">
+  Group ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Group name
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Group type: `builtin` or `regular`
+</ResponseField>
+
+<ResponseField name="permissions" type="array">
+  Array of permission strings (only for built-in groups)
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  Creation timestamp (ISO format)
+</ResponseField>
+
+## Create Group
+
+Create a new user group.
+
+```bash
+POST /api/groups
+```
+
+<Warning>
+  This endpoint requires admin permissions.
+</Warning>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Group name (must be unique)
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Data Science Team"}' \
+  https://redash.example.com/api/groups
+```
+
+### Response
+
+```json
+{
+  "id": 10,
+  "name": "Data Science Team",
+  "type": "regular",
+  "permissions": [],
+  "created_at": "2024-01-20T15:30:00Z"
+}
+```
+
+## Update Group
+
+Update a group's name.
+
+```bash
+POST /api/groups/<group_id>
+```
+
+<Warning>
+  - This endpoint requires admin permissions
+  - Built-in groups cannot be modified
+</Warning>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  New group name
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Data Science and ML Team"}' \
+  https://redash.example.com/api/groups/10
+```
+
+### Response
+
+Returns the updated group object.
+
+## Delete Group
+
+Delete a group.
+
+```bash
+DELETE /api/groups/<group_id>
+```
+
+<Warning>
+  - This endpoint requires admin permissions
+  - Built-in groups cannot be deleted
+  - All members will be removed from the group
+</Warning>
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/groups/10
+```
+
+## Group Members
+
+### List Members
+
+Get all users in a group.
+
+```bash
+GET /api/groups/<group_id>/members
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/groups/5/members
+```
+
+### Response
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Admin User",
+    "email": "admin@example.com",
+    "profile_image_url": "https://www.gravatar.com/avatar/...",
+    "groups": [1, 2, 5],
+    "created_at": "2024-01-01T00:00:00Z"
+  },
+  {
+    "id": 42,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "profile_image_url": "https://www.gravatar.com/avatar/...",
+    "groups": [2, 5],
+    "created_at": "2024-01-15T10:00:00Z"
+  }
+]
+```
+
+### Add Member
+
+Add a user to a group.
+
+```bash
+POST /api/groups/<group_id>/members
+```
+
+#### Request Body
+
+<ParamField body="user_id" type="number" required>
+  ID of the user to add
+</ParamField>
+
+#### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 42}' \
+  https://redash.example.com/api/groups/5/members
+```
+
+#### Response
+
+Returns the user object with updated group memberships.
+
+### Remove Member
+
+Remove a user from a group.
+
+```bash
+DELETE /api/groups/<group_id>/members/<user_id>
+```
+
+#### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/groups/5/members/42
+```
+
+## Data Source Access
+
+### List Data Sources
+
+Get all data sources accessible to a group.
+
+```bash
+GET /api/groups/<group_id>/data_sources
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/groups/5/data_sources
+```
+
+### Response
+
+```json
+[
+  {
+    "id": 1,
+    "name": "PostgreSQL Production",
+    "type": "pg",
+    "view_only": false
+  },
+  {
+    "id": 3,
+    "name": "MySQL Analytics",
+    "type": "mysql",
+    "view_only": true
+  }
+]
+```
+
+### Add Data Source
+
+Grant a group access to a data source.
+
+```bash
+POST /api/groups/<group_id>/data_sources
+```
+
+#### Request Body
+
+<ParamField body="data_source_id" type="number" required>
+  ID of the data source to grant access to
+</ParamField>
+
+#### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"data_source_id": 1}' \
+  https://redash.example.com/api/groups/5/data_sources
+```
+
+#### Response
+
+Returns the data source object with permission details:
+
+```json
+{
+  "id": 1,
+  "name": "PostgreSQL Production",
+  "type": "pg",
+  "view_only": false
+}
+```
+
+<Note>
+  By default, groups get full access (read/write). Use the Update Data Source Permission endpoint to set view-only access.
+</Note>
+
+### Update Data Source Permission
+
+Change the permission level for a data source.
+
+```bash
+POST /api/groups/<group_id>/data_sources/<data_source_id>
+```
+
+#### Request Body
+
+<ParamField body="view_only" type="boolean" required>
+  Whether the group should have view-only access
+</ParamField>
+
+#### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"view_only": true}' \
+  https://redash.example.com/api/groups/5/data_sources/1
+```
+
+#### Response
+
+Returns the data source object with updated permissions.
+
+### Remove Data Source
+
+Revoke a group's access to a data source.
+
+```bash
+DELETE /api/groups/<group_id>/data_sources/<data_source_id>
+```
+
+#### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/groups/5/data_sources/1
+```
+
+## Built-in Groups
+
+Redash includes two built-in groups that cannot be deleted or renamed:
+
+### Admin Group
+
+```json
+{
+  "id": 1,
+  "name": "admin",
+  "type": "builtin",
+  "permissions": ["admin"]
+}
+```
+
+Members have full administrative access:
+- Manage all users and groups
+- Configure data sources
+- Access all queries and dashboards
+- Modify organization settings
+
+### Default Group
+
+```json
+{
+  "id": 2,
+  "name": "default",
+  "type": "builtin",
+  "permissions": [
+    "create_dashboard",
+    "create_query",
+    "edit_dashboard",
+    "edit_query",
+    "view_query",
+    "view_source",
+    "execute_query",
+    "list_users",
+    "list_dashboards",
+    "list_alerts",
+    "list_data_sources"
+  ]
+}
+```
+
+All users are automatically added to the default group. Members can:
+- Create and edit their own queries and dashboards
+- View and execute queries they have access to
+- Access data sources granted to the group
+
+## Permission Model
+
+### Data Source Permissions
+
+Groups can have two levels of access to data sources:
+
+#### Full Access (`view_only: false`)
+
+- Execute queries
+- Create and edit queries
+- Fork queries
+- Refresh query results
+
+#### View-Only Access (`view_only: true`)
+
+- View existing queries
+- View query results
+- Execute queries with safe parameters only
+- Cannot create, edit, or fork queries
+
+### Object Permissions
+
+Access to queries and dashboards is determined by:
+
+1. **Creator** - Users can always edit their own content
+2. **Group Membership** - Access is granted if:
+   - User belongs to a group with access to the data source
+   - For dashboards, user has view access to all queries in the dashboard
+
+### Permission Inheritance
+
+Users inherit permissions from all groups they belong to. For example:
+
+- User in groups [2, 5, 10]
+- Group 2 has access to Data Source A (view-only)
+- Group 5 has access to Data Source A (full access)
+- User has **full access** to Data Source A (most permissive wins)
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Department-Based Groups">
+    Create groups for each department:
+    
+    - **Engineering** - Access to production databases (view-only)
+    - **Analytics** - Access to analytics databases (full access)
+    - **Finance** - Access to financial databases (full access)
+    - **Marketing** - Access to marketing and analytics databases (view-only)
+  </Accordion>
+
+  <Accordion title="Role-Based Groups">
+    Create groups based on job functions:
+    
+    - **Data Scientists** - Full access to analytics and ML databases
+    - **Business Analysts** - View-only access to most databases
+    - **Executives** - View-only access to dashboards
+    - **Data Engineers** - Full access to all databases
+  </Accordion>
+
+  <Accordion title="Project-Based Groups">
+    Create temporary groups for specific projects:
+    
+    - **Project Alpha Team** - Access to Project Alpha data sources
+    - **Q1 Revenue Analysis** - Access to sales and financial data
+    
+    Delete groups when projects complete.
+  </Accordion>
+
+  <Accordion title="External Users">
+    Create restricted groups for external stakeholders:
+    
+    - **Clients** - View-only access to client-specific dashboards
+    - **Partners** - View-only access to shared data
+    - **Contractors** - Limited access to specific data sources
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Group Organization">
+    - Use clear, descriptive names
+    - Create groups based on team structure or data access needs
+    - Keep the number of groups manageable (5-20 for most organizations)
+    - Document group purposes and data access policies
+  </Accordion>
+
+  <Accordion title="Permission Management">
+    - Start with view-only access and grant full access as needed
+    - Review group memberships quarterly
+    - Remove users from groups when they change roles
+    - Use the default group for organization-wide access
+  </Accordion>
+
+  <Accordion title="Security">
+    - Limit admin group membership to IT/data team leads
+    - Don't create groups with overly broad access
+    - Audit data source access regularly
+    - Remove external users from groups when projects end
+  </Accordion>
+
+  <Accordion title="Data Source Assignment">
+    - Assign data sources to groups, not individual users
+    - Use view-only for sensitive production databases
+    - Grant full access to development/staging environments
+    - Document which groups should access which data sources
+  </Accordion>
+</AccordionGroup>
+
+## Group Workflow Example
+
+Here's a typical workflow for setting up a new team:
+
+```bash
+# 1. Create a group
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Analytics Team"}' \
+  https://redash.example.com/api/groups
+
+# Response: {"id": 15, "name": "Analytics Team", ...}
+
+# 2. Add team members
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 42}' \
+  https://redash.example.com/api/groups/15/members
+
+# 3. Grant access to data sources
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"data_source_id": 3}' \
+  https://redash.example.com/api/groups/15/data_sources
+
+# 4. Set appropriate permission level
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"view_only": false}' \
+  https://redash.example.com/api/groups/15/data_sources/3
+```

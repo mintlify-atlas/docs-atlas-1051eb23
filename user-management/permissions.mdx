@@ -1,0 +1,664 @@
+---
+title: Permissions and Access Control
+description: Understand Redash's permission model, access control mechanisms, and data source permissions
+---
+
+## Overview
+
+Redash uses a multi-layered permission system:
+
+1. **User Permissions:** Group-based permissions that control what actions users can perform
+2. **Object Permissions:** Individual access grants for queries and dashboards
+3. **Data Source Permissions:** Group-level access to data sources with view-only options
+
+## Permission Model
+
+### Group-Based Permissions
+
+Users inherit permissions from all groups they belong to. Permissions are additive - if a user belongs to multiple groups, they have all permissions from all groups.
+
+**Permission storage** (from `/home/daytona/workspace/source/redash/models/users.py:173-175`):
+
+```python
+@property
+def permissions(self):
+    # TODO: this should be cached.
+    return list(itertools.chain(*[g.permissions for g in Group.query.filter(Group.id.in_(self.group_ids))]))
+```
+
+### Default Permissions
+
+When a new group is created, it receives these default permissions:
+
+- `create_dashboard` - Create new dashboards
+- `create_query` - Create new queries
+- `edit_dashboard` - Edit dashboards
+- `edit_query` - Edit queries
+- `view_query` - View queries
+- `view_source` - View query source code
+- `execute_query` - Execute queries
+- `list_users` - View user list
+- `schedule_query` - Schedule query execution
+- `list_dashboards` - View dashboard list
+- `list_alerts` - View alert list
+- `list_data_sources` - View data source list
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/users.py:247-260`):
+
+```python
+DEFAULT_PERMISSIONS = [
+    "create_dashboard",
+    "create_query",
+    "edit_dashboard",
+    "edit_query",
+    "view_query",
+    "view_source",
+    "execute_query",
+    "list_users",
+    "schedule_query",
+    "list_dashboards",
+    "list_alerts",
+    "list_data_sources",
+]
+```
+
+### Admin Permissions
+
+Special administrative permissions:
+
+- `admin` - Organization administrator (full access)
+- `super_admin` - Super administrator (cross-organization access)
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/users.py:261`):
+
+```python
+ADMIN_PERMISSIONS = ["admin", "super_admin"]
+```
+
+## Permission Checks
+
+### Decorator-Based Checks
+
+Permissions are enforced using decorators on API endpoints:
+
+**Single permission:**
+
+```python
+@require_permission("admin")
+def post(self):
+    # Only admins can access
+```
+
+**Multiple permissions (all required):**
+
+```python
+@require_permissions(("create_query", "execute_query"))
+def post(self):
+    # User must have both permissions
+```
+
+**Multiple permissions (any one required):**
+
+```python
+@require_any_of_permission(["admin", "super_admin"])
+def post(self):
+    # User must have at least one permission
+```
+
+**Implementation** (from `/home/daytona/workspace/source/redash/permissions.py:57-84`):
+
+```python
+class require_permissions:
+    def __init__(self, permissions, allow_one=False):
+        self.permissions = permissions
+        self.allow_one = allow_one
+    
+    def __call__(self, fn):
+        @functools.wraps(fn)
+        def decorated(*args, **kwargs):
+            if self.allow_one:
+                has_permissions = any([current_user.has_permission(permission) for permission in self.permissions])
+            else:
+                has_permissions = current_user.has_permissions(self.permissions)
+            
+            if has_permissions:
+                return fn(*args, **kwargs)
+            else:
+                abort(403)
+        
+        return decorated
+```
+
+### Admin or Owner Checks
+
+Many operations allow access to either admins or the object owner:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/permissions.py:94-109`):
+
+```python
+def has_permission_or_owner(permission, object_owner_id):
+    return int(object_owner_id) == current_user.id or current_user.has_permission(permission)
+
+def is_admin_or_owner(object_owner_id):
+    return has_permission_or_owner("admin", object_owner_id)
+
+def require_admin_or_owner(object_owner_id):
+    if not is_admin_or_owner(object_owner_id):
+        abort(403, message="You don't have permission to edit this resource.")
+```
+
+**Example usage** (from `/home/daytona/workspace/source/redash/handlers/users.py:207`):
+
+```python
+def post(self, user_id):
+    require_admin_or_owner(user_id)
+    # User can update their own profile or admin can update any profile
+```
+
+## Data Source Permissions
+
+### Access Control Model
+
+Data sources use a group-based access control model:
+
+1. **Groups are granted access** to data sources
+2. **Access levels:**
+   - `view_only: false` - Full access (query and modify)
+   - `view_only: true` - Read-only access (query only)
+3. **Users access data sources** through their group memberships
+
+### Data Source Groups
+
+The `DataSourceGroup` model links data sources to groups:
+
+**Model definition** (from `/home/daytona/workspace/source/redash/models/__init__.py:297-308`):
+
+```python
+class DataSourceGroup(db.Model):
+    id = primary_key("DataSourceGroup")
+    data_source_id = Column(key_type("DataSource"), db.ForeignKey("data_sources.id"))
+    data_source = db.relationship(DataSource, back_populates="data_source_groups")
+    group_id = Column(key_type("Group"), db.ForeignKey("groups.id"))
+    group = db.relationship(Group, back_populates="data_sources")
+    view_only = Column(db.Boolean, default=False)
+```
+
+### Granting Data Source Access
+
+**Add group to data source:** `POST /api/groups/{group_id}/data_sources`
+
+```json
+{
+  "data_source_id": 123
+}
+```
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/groups.py:124-142`):
+
+```python
+def post(self, group_id):
+    data_source_id = request.json["data_source_id"]
+    data_source = models.DataSource.get_by_id_and_org(data_source_id, self.current_org)
+    group = models.Group.get_by_id_and_org(group_id, self.current_org)
+    
+    data_source_group = data_source.add_group(group)
+    models.db.session.commit()
+```
+
+### Updating Permissions
+
+**Update view-only status:** `POST /api/groups/{group_id}/data_sources/{data_source_id}`
+
+```json
+{
+  "view_only": true
+}
+```
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/groups.py:159-178`):
+
+```python
+def post(self, group_id, data_source_id):
+    data_source = models.DataSource.get_by_id_and_org(data_source_id, self.current_org)
+    group = models.Group.get_by_id_and_org(group_id, self.current_org)
+    view_only = request.json["view_only"]
+    
+    data_source_group = data_source.update_group_permission(group, view_only)
+    models.db.session.commit()
+```
+
+### Revoking Data Source Access
+
+**Remove group from data source:** `DELETE /api/groups/{group_id}/data_sources/{data_source_id}`
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/groups.py:180-195`):
+
+```python
+def delete(self, group_id, data_source_id):
+    data_source = models.DataSource.get_by_id_and_org(data_source_id, self.current_org)
+    group = models.Group.get_by_id_and_org(group_id, self.current_org)
+    
+    data_source.remove_group(group)
+    models.db.session.commit()
+```
+
+### Querying with Data Source Permissions
+
+When listing data sources, only data sources accessible to the user's groups are returned:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/__init__.py:183-190`):
+
+```python
+@classmethod
+def all(cls, org, group_ids=None):
+    data_sources = cls.query.filter(cls.org == org).order_by(cls.id.asc())
+    
+    if group_ids:
+        data_sources = data_sources.join(DataSourceGroup).filter(DataSourceGroup.group_id.in_(group_ids))
+    
+    return data_sources.distinct()
+```
+
+## Object-Level Permissions
+
+### Access Permission Model
+
+Queries and dashboards support granular access control through the `AccessPermission` model:
+
+**Access types:**
+- `view` - Can view the object
+- `modify` - Can edit the object
+- `delete` - Can delete the object (not currently used)
+
+**Implementation** (from `/home/daytona/workspace/source/redash/permissions.py:10-14`):
+
+```python
+ACCESS_TYPE_VIEW = "view"
+ACCESS_TYPE_MODIFY = "modify"
+ACCESS_TYPE_DELETE = "delete"
+
+ACCESS_TYPES = (ACCESS_TYPE_VIEW, ACCESS_TYPE_MODIFY, ACCESS_TYPE_DELETE)
+```
+
+### Granting Access
+
+**Endpoint:** `POST /api/{object_type}/{object_id}/acl`
+
+Where `object_type` is `queries` or `dashboards`.
+
+```json
+{
+  "access_type": "modify",
+  "user_id": 123
+}
+```
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/permissions.py:36-67`):
+
+```python
+def post(self, object_type, object_id):
+    model = get_model_from_type(object_type)
+    obj = get_object_or_404(model.get_by_id_and_org, object_id, self.current_org)
+    
+    require_admin_or_owner(obj.user_id)
+    
+    req = request.get_json(True)
+    access_type = req["access_type"]
+    
+    if access_type not in ACCESS_TYPES:
+        abort(400, message="Unknown access type.")
+    
+    try:
+        grantee = User.get_by_id_and_org(req["user_id"], self.current_org)
+    except NoResultFound:
+        abort(400, message="User not found.")
+    
+    permission = AccessPermission.grant(obj, access_type, grantee, self.current_user)
+    db.session.commit()
+```
+
+### Revoking Access
+
+**Endpoint:** `DELETE /api/{object_type}/{object_id}/acl`
+
+```json
+{
+  "access_type": "modify",
+  "user_id": 123
+}
+```
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/permissions.py:69-94`):
+
+```python
+def delete(self, object_type, object_id):
+    model = get_model_from_type(object_type)
+    obj = get_object_or_404(model.get_by_id_and_org, object_id, self.current_org)
+    
+    require_admin_or_owner(obj.user_id)
+    
+    req = request.get_json(True)
+    grantee_id = req["user_id"]
+    access_type = req["access_type"]
+    
+    grantee = User.query.get(req["user_id"])
+    if grantee is None:
+        abort(400, message="User not found.")
+    
+    AccessPermission.revoke(obj, grantee, access_type)
+    db.session.commit()
+```
+
+### Checking Access
+
+**Endpoint:** `GET /api/{object_type}/{object_id}/acl/{access_type}`
+
+Returns whether the current user has the specified access type.
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/permissions.py:97-104`):
+
+```python
+def get(self, object_type, object_id, access_type):
+    model = get_model_from_type(object_type)
+    obj = get_object_or_404(model.get_by_id_and_org, object_id, self.current_org)
+    
+    has_access = AccessPermission.exists(obj, access_type, self.current_user)
+    
+    return {"response": has_access}
+```
+
+### Permission Storage
+
+Access permissions are stored in the `access_permissions` table:
+
+**Model definition** (from `/home/daytona/workspace/source/redash/models/users.py:303-314`):
+
+```python
+class AccessPermission(GFKBase, db.Model):
+    id = primary_key("AccessPermission")
+    # 'object' defined in GFKBase
+    access_type = Column(db.String(255))
+    grantor_id = Column(key_type("User"), db.ForeignKey("users.id"))
+    grantor = db.relationship(User, backref="grantor", foreign_keys=[grantor_id])
+    grantee_id = Column(key_type("User"), db.ForeignKey("users.id"))
+    grantee = db.relationship(User, backref="grantee", foreign_keys=[grantee_id])
+```
+
+## Access Control Logic
+
+### Group-Based Access
+
+Objects (queries, dashboards) are accessible based on group membership:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/permissions.py:34-49`):
+
+```python
+def has_access_to_groups(obj, user, need_view_only):
+    groups = obj.groups if hasattr(obj, "groups") else obj
+    
+    if "admin" in user.permissions:
+        return True
+    
+    matching_groups = set(groups.keys()).intersection(user.group_ids)
+    
+    if not matching_groups:
+        return False
+    
+    required_level = 1 if need_view_only else 2
+    
+    group_level = 1 if all(flatten([groups[group] for group in matching_groups])) else 2
+    
+    return required_level <= group_level
+```
+
+**Access logic:**
+1. Admins have access to everything
+2. User must belong to at least one group that has access
+3. For modify access, user needs at least one group with non-view-only access
+4. For view access, any group access (including view-only) is sufficient
+
+### Combined Access Check
+
+The system checks both API key access and group-based access:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/permissions.py:17-21`):
+
+```python
+def has_access(obj, user, need_view_only):
+    if hasattr(obj, "api_key") and user.is_api_user():
+        return has_access_to_object(obj, user.id, need_view_only)
+    else:
+        return has_access_to_groups(obj, user, need_view_only)
+```
+
+### API Key Access
+
+API keys can access objects they're associated with:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/permissions.py:24-31`):
+
+```python
+def has_access_to_object(obj, api_key, need_view_only):
+    if obj.api_key == api_key:
+        return need_view_only
+    elif hasattr(obj, "dashboard_api_keys"):
+        # check if api_key belongs to a dashboard containing this query
+        return api_key in obj.dashboard_api_keys and need_view_only
+    else:
+        return False
+```
+
+**Rules:**
+- Query API keys can only view (not modify) their associated query
+- Dashboard API keys can view queries embedded in the dashboard
+
+## Query Access Control
+
+Queries inherit access control from their data source:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/__init__.py:831-835`):
+
+```python
+@property
+def groups(self):
+    if self.data_source is None:
+        return {}
+    
+    return self.data_source.groups
+```
+
+**Query listing with access control** (from `/home/daytona/workspace/source/redash/models/__init__.py:523-544`):
+
+```python
+@classmethod
+def all_queries(cls, group_ids, user_id=None, include_drafts=False, include_archived=False):
+    query_ids = (
+        db.session.query(distinct(cls.id))
+        .join(DataSourceGroup, Query.data_source_id == DataSourceGroup.data_source_id)
+        .filter(Query.is_archived.is_(include_archived))
+        .filter(DataSourceGroup.group_id.in_(group_ids))
+    )
+    queries = (
+        cls.query.options(
+            joinedload(Query.user),
+            joinedload(Query.latest_query_data).load_only("runtime", "retrieved_at"),
+        )
+        .filter(cls.id.in_(query_ids))
+    )
+    
+    if not include_drafts:
+        queries = queries.filter(or_(Query.is_draft.is_(False), Query.user_id == user_id))
+    return queries
+```
+
+**Access rules:**
+1. User must have access to the query's data source (via group membership)
+2. Published queries are visible to all users with data source access
+3. Draft queries are only visible to their creator (unless including drafts)
+
+## Dashboard Access Control
+
+Dashboards have complex access control based on widget data sources:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/__init__.py:1145-1161`):
+
+```python
+@classmethod
+def all(cls, org, group_ids, user_id):
+    query = (
+        Dashboard.query.options(joinedload(Dashboard.user).load_only("id", "name", "details", "email"))
+        .distinct(cls.lowercase_name, Dashboard.created_at, Dashboard.slug)
+        .outerjoin(Widget)
+        .outerjoin(Visualization)
+        .outerjoin(Query)
+        .outerjoin(DataSourceGroup, Query.data_source_id == DataSourceGroup.data_source_id)
+        .filter(
+            Dashboard.is_archived.is_(False),
+            (DataSourceGroup.group_id.in_(group_ids) | (Dashboard.user_id == user_id)),
+            Dashboard.org == org,
+        )
+    )
+    
+    query = query.filter(or_(Dashboard.user_id == user_id, Dashboard.is_draft.is_(False)))
+    return query
+```
+
+**Access rules:**
+1. User must have access to at least one data source used in the dashboard's widgets, OR
+2. User is the dashboard owner
+3. Draft dashboards are only visible to their creator
+
+## Permission Auditing
+
+### Listing Object Permissions
+
+**Endpoint:** `GET /api/{object_type}/{object_id}/acl`
+
+Returns all access permissions granted for an object, grouped by access type:
+
+```json
+{
+  "view": [
+    {"id": 1, "name": "User 1", "email": "user1@example.com"},
+    {"id": 2, "name": "User 2", "email": "user2@example.com"}
+  ],
+  "modify": [
+    {"id": 1, "name": "User 1", "email": "user1@example.com"}
+  ]
+}
+```
+
+**Implementation** (from `/home/daytona/workspace/source/redash/handlers/permissions.py:22-34`):
+
+```python
+def get(self, object_type, object_id):
+    model = get_model_from_type(object_type)
+    obj = get_object_or_404(model.get_by_id_and_org, object_id, self.current_org)
+    
+    permissions = AccessPermission.find(obj)
+    
+    result = defaultdict(list)
+    
+    for perm in permissions:
+        result[perm.access_type].append(perm.grantee.to_dict())
+    
+    return result
+```
+
+### Event Logging
+
+All permission changes are logged as events:
+
+**Grant permission event:**
+
+```python
+self.record_event({
+    "action": "grant_permission",
+    "object_id": object_id,
+    "object_type": object_type,
+    "grantee": grantee.id,
+    "access_type": access_type,
+})
+```
+
+**Revoke permission event:**
+
+```python
+self.record_event({
+    "action": "revoke_permission",
+    "object_id": object_id,
+    "object_type": object_type,
+    "access_type": access_type,
+    "grantee_id": grantee_id,
+})
+```
+
+## Modify Access Logic
+
+Users can modify objects if they're either the owner or have explicit modify access:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/permissions.py:112-118`):
+
+```python
+def can_modify(obj, user):
+    return is_admin_or_owner(obj.user_id) or user.has_access(obj, ACCESS_TYPE_MODIFY)
+
+def require_object_modify_permission(obj, user):
+    if not can_modify(obj, user):
+        abort(403)
+```
+
+**User method** (from `/home/daytona/workspace/source/redash/models/users.py:232-233`):
+
+```python
+def has_access(self, obj, access_type):
+    return AccessPermission.exists(obj, access_type, grantee=self)
+```
+
+## Best Practices
+
+1. **Use groups for data source access:** Grant data source access to groups, not individual users
+2. **Minimize admin users:** Only grant admin permissions to users who truly need them
+3. **Use view-only for read-only access:** Prevent accidental data modifications
+4. **Object permissions for collaboration:** Use access permissions to share specific queries/dashboards
+5. **Regular access reviews:** Periodically audit group memberships and data source access
+6. **Principle of least privilege:** Grant only the minimum permissions needed
+7. **Default group security:** Configure your default group with appropriate permissions for new users
+8. **Monitor permission changes:** Review permission grant/revoke events in audit logs
+
+## Common Permission Scenarios
+
+### Scenario 1: Read-Only Data Source Access
+
+To give a group read-only access to a data source:
+
+1. Create or identify the group
+2. Add data source to group with `view_only: true`
+3. Users can query the data source but not modify it
+
+### Scenario 2: Sharing a Query with a Specific User
+
+To share a query with a user who doesn't have data source access:
+
+1. Grant `view` access via object permissions: `POST /api/queries/{id}/acl`
+2. User can view and execute the query
+3. User cannot modify the query (unless `modify` access is also granted)
+
+### Scenario 3: Department-Based Access
+
+To implement department-based access control:
+
+1. Create groups for each department (Sales, Engineering, etc.)
+2. Grant each group access to relevant data sources
+3. Assign users to their department groups
+4. Users automatically inherit access to their department's data sources
+
+### Scenario 4: External Stakeholder Access
+
+To give external stakeholders limited access:
+
+1. Create a dedicated group with minimal permissions
+2. Remove sensitive permissions (e.g., `create_query`, `list_users`)
+3. Grant view-only access to specific data sources
+4. Use object permissions to share specific dashboards
+5. Consider using query/dashboard API keys instead for very limited access

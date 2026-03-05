@@ -1,0 +1,424 @@
+---
+title: Visualizations
+description: Create and manage visualizations
+---
+
+## Overview
+
+Visualizations are graphical representations of query results. Each query can have multiple visualizations (charts, tables, pivot tables, etc.).
+
+## Create Visualization
+
+Create a new visualization for a query.
+
+```bash
+POST /api/visualizations
+```
+
+### Request Body
+
+<ParamField body="query_id" type="number" required>
+  ID of the query this visualization belongs to
+</ParamField>
+
+<ParamField body="type" type="string" required>
+  Visualization type. Options: `TABLE`, `CHART`, `COHORT`, `BOXPLOT`, `COUNTER`, `SUNBURST_SEQUENCE`, `SANKEY`, `WORD_CLOUD`, `MAP`, `PIVOT`
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Visualization name
+</ParamField>
+
+<ParamField body="description" type="string">
+  Visualization description
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  Visualization-specific configuration options
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query_id": 123,
+    "type": "CHART",
+    "name": "User Growth Chart",
+    "description": "Monthly user growth trend",
+    "options": {
+      "globalSeriesType": "line",
+      "sortX": true,
+      "legend": {"enabled": true},
+      "yAxis": [{"type": "linear"}],
+      "xAxis": {"type": "datetime", "labels": {"enabled": true}},
+      "series": {
+        "stacking": null
+      },
+      "columnMapping": {
+        "date": "x",
+        "count": "y"
+      }
+    }
+  }' \
+  https://redash.example.com/api/visualizations
+```
+
+### Response
+
+```json
+{
+  "id": 45,
+  "type": "CHART",
+  "name": "User Growth Chart",
+  "description": "Monthly user growth trend",
+  "options": {...},
+  "query_id": 123,
+  "created_at": "2024-01-20T15:30:00Z",
+  "updated_at": "2024-01-20T15:30:00Z"
+}
+```
+
+## Update Visualization
+
+Update an existing visualization.
+
+```bash
+POST /api/visualizations/<visualization_id>
+```
+
+### Request Body
+
+<ParamField body="type" type="string">
+  Visualization type
+</ParamField>
+
+<ParamField body="name" type="string">
+  Visualization name
+</ParamField>
+
+<ParamField body="description" type="string">
+  Visualization description
+</ParamField>
+
+<ParamField body="options" type="object">
+  Visualization configuration
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Chart Name",
+    "options": {
+      "globalSeriesType": "column"
+    }
+  }' \
+  https://redash.example.com/api/visualizations/45
+```
+
+### Response
+
+Returns the updated visualization object.
+
+## Delete Visualization
+
+Delete a visualization.
+
+```bash
+DELETE /api/visualizations/<visualization_id>
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/visualizations/45
+```
+
+<Warning>
+  Deleting a visualization will remove it from all dashboards where it's used.
+</Warning>
+
+## Visualization Types
+
+### TABLE
+
+Display query results as a table.
+
+**Options:**
+```json
+{
+  "itemsPerPage": 25,
+  "columns": [
+    {
+      "name": "column_name",
+      "type": "string",
+      "displayAs": "string",
+      "visible": true,
+      "order": 1,
+      "title": "Column Title",
+      "allowSearch": false,
+      "alignContent": "left"
+    }
+  ]
+}
+```
+
+### CHART
+
+Display data as charts (line, bar, area, pie, scatter, bubble, box, heatmap).
+
+**Options:**
+```json
+{
+  "globalSeriesType": "line",
+  "sortX": true,
+  "legend": {"enabled": true, "placement": "auto"},
+  "yAxis": [
+    {
+      "type": "linear",
+      "title": {"text": "Y Axis Title"}
+    }
+  ],
+  "xAxis": {
+    "type": "datetime",
+    "labels": {"enabled": true}
+  },
+  "series": {
+    "stacking": null,
+    "error_y": {"visible": true}
+  },
+  "columnMapping": {
+    "date": "x",
+    "count": "y",
+    "series": "series"
+  },
+  "numberFormat": "0,0[.]00",
+  "percentFormat": "0[.]00%",
+  "textFormat": "",
+  "dateTimeFormat": "DD/MM/YY HH:mm"
+}
+```
+
+**Chart Types:**
+- `line` - Line chart
+- `column` - Vertical bar chart
+- `bar` - Horizontal bar chart
+- `area` - Area chart
+- `pie` - Pie chart
+- `scatter` - Scatter plot
+- `bubble` - Bubble chart
+- `box` - Box plot
+- `heatmap` - Heat map
+
+### COUNTER
+
+Display a single numeric value.
+
+**Options:**
+```json
+{
+  "counterLabel": "Total Users",
+  "counterColName": "count",
+  "rowNumber": 1,
+  "targetRowNumber": 1,
+  "stringDecimal": 0,
+  "stringDecChar": ".",
+  "stringThouSep": ",",
+  "tooltipFormat": "0,0.000",
+  "targetColName": "target",
+  "countRow": false
+}
+```
+
+### PIVOT
+
+Display data as a pivot table.
+
+**Options:**
+```json
+{
+  "controls": {
+    "enabled": true
+  },
+  "rendererName": "Table",
+  "rows": ["category"],
+  "cols": ["date"],
+  "vals": ["amount"],
+  "aggregatorName": "Sum"
+}
+```
+
+### MAP
+
+Display geographic data on a map.
+
+**Options:**
+```json
+{
+  "latColName": "lat",
+  "lonColName": "lon",
+  "classify": null,
+  "groups": {},
+  "mapTiles": "OpenStreetMap",
+  "clusterMarkers": true,
+  "customizeMarkers": false,
+  "tooltip": {
+    "enabled": true,
+    "template": "<b>{{name}}</b>"
+  },
+  "popup": {
+    "enabled": true,
+    "template": "Popup content"
+  }
+}
+```
+
+### COHORT
+
+Display cohort analysis.
+
+**Options:**
+```json
+{
+  "dateColumn": "date",
+  "stageColumn": "stage",
+  "totalColumn": "total",
+  "valueColumn": "value",
+  "timeInterval": "daily",
+  "mode": "diagonal",
+  "showAsPercentage": true
+}
+```
+
+### SUNBURST_SEQUENCE
+
+Display hierarchical data as a sunburst chart.
+
+**Options:**
+```json
+{
+  "sequenceColumn": "path",
+  "stageColumn": "stage",
+  "valueColumn": "value",
+  "showSizeInLegend": false
+}
+```
+
+### SANKEY
+
+Display flow data as a Sankey diagram.
+
+**Options:**
+```json
+{
+  "sourceColumn": "source",
+  "targetColumn": "target",
+  "valueColumn": "value"
+}
+```
+
+### WORD_CLOUD
+
+Display word frequency as a word cloud.
+
+**Options:**
+```json
+{
+  "column": "word",
+  "frequencyColumn": "count"
+}
+```
+
+### BOXPLOT
+
+Display statistical distribution as box plots.
+
+**Options:**
+```json
+{
+  "xAxisColumn": "category",
+  "yAxisColumns": ["value1", "value2"]
+}
+```
+
+## Common Configuration
+
+### Column Mapping
+
+Map query result columns to visualization axes:
+
+```json
+{
+  "columnMapping": {
+    "column_name_from_query": "x",
+    "another_column": "y",
+    "category_column": "series",
+    "size_column": "size"
+  }
+}
+```
+
+### Number Formatting
+
+Use [Numeral.js](http://numeraljs.com/) format strings:
+
+- `0,0` - 1,000
+- `0,0.00` - 1,000.00
+- `0.00%` - 10.00%
+- `$0,0.00` - $1,000.00
+- `0.00a` - 1.00k
+
+### Date Formatting
+
+Use [Moment.js](https://momentjs.com/docs/#/displaying/) format strings:
+
+- `DD/MM/YYYY` - 20/01/2024
+- `YYYY-MM-DD` - 2024-01-20
+- `MMM DD, YYYY` - Jan 20, 2024
+- `DD/MM/YY HH:mm` - 20/01/24 15:30
+
+## Permissions
+
+Visualization operations require `edit_query` permission. Users can only manage visualizations for queries they have permission to edit.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choose the Right Visualization">
+    - Use **TABLE** for detailed data inspection
+    - Use **LINE** charts for trends over time
+    - Use **BAR** charts for comparisons
+    - Use **PIE** charts for proportions (limit to 5-7 categories)
+    - Use **COUNTER** for single KPIs
+    - Use **PIVOT** for multi-dimensional analysis
+  </Accordion>
+
+  <Accordion title="Optimize for Performance">
+    - Limit data points in charts (aggregated data performs better)
+    - Use appropriate time granularity (daily vs. hourly)
+    - Consider table pagination for large datasets
+    - Cache query results appropriately
+  </Accordion>
+
+  <Accordion title="Design for Clarity">
+    - Use descriptive names for visualizations
+    - Add helpful descriptions
+    - Format numbers appropriately (currency, percentages, decimals)
+    - Use consistent date formats across visualizations
+    - Enable legends when showing multiple series
+  </Accordion>
+
+  <Accordion title="Maintain Consistency">
+    - Use consistent color schemes across dashboards
+    - Standardize axis labels and titles
+    - Apply similar formatting to related visualizations
+  </Accordion>
+</AccordionGroup>

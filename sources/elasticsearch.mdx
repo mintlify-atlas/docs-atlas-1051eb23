@@ -1,0 +1,442 @@
+---
+title: Elasticsearch
+description: Connect to Elasticsearch clusters and run search queries using Elasticsearch Query DSL
+---
+
+## Overview
+
+The Elasticsearch data source allows you to connect to Elasticsearch clusters and execute queries using Elasticsearch's Query DSL (Domain Specific Language). Redash supports both simple query string queries and full JSON-based query syntax.
+
+## Connection Setup
+
+To connect to Elasticsearch, configure the following parameters:
+
+### Required Fields
+
+- **Base URL**: The Elasticsearch server URL (e.g., `http://localhost:9200`)
+
+### Optional Fields
+
+- **Basic Auth User**: Username for HTTP basic authentication
+- **Basic Auth Password**: Password for HTTP basic authentication (stored securely)
+
+### Configuration Schema
+
+```json
+{
+  "server": "http://localhost:9200",
+  "basic_auth_user": "elastic",
+  "basic_auth_password": "password"
+}
+```
+
+## Query Syntax
+
+Elasticsearch queries in Redash use JSON format. The query structure varies depending on whether you're using the Kibana-style or native Elasticsearch format.
+
+### Native Elasticsearch Query Format
+
+This is the recommended format for new queries:
+
+#### Basic Search Query
+
+```json
+{
+  "index": "logs-*",
+  "query": {
+    "match": {
+      "level": "error"
+    }
+  },
+  "size": 100
+}
+```
+
+#### Match All Query
+
+```json
+{
+  "index": "products",
+  "query": {
+    "match_all": {}
+  },
+  "size": 50
+}
+```
+
+#### Boolean Query with Multiple Conditions
+
+```json
+{
+  "index": "users",
+  "query": {
+    "bool": {
+      "must": [
+        {"match": {"status": "active"}},
+        {"range": {"age": {"gte": 18, "lte": 65}}}
+      ],
+      "must_not": [
+        {"term": {"deleted": true}}
+      ],
+      "should": [
+        {"match": {"role": "admin"}},
+        {"match": {"role": "moderator"}}
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "size": 100
+}
+```
+
+#### Range Query
+
+```json
+{
+  "index": "events",
+  "query": {
+    "range": {
+      "@timestamp": {
+        "gte": "2024-01-01T00:00:00",
+        "lte": "2024-12-31T23:59:59",
+        "format": "yyyy-MM-dd'T'HH:mm:ss"
+      }
+    }
+  },
+  "size": 500
+}
+```
+
+#### Wildcard and Fuzzy Queries
+
+```json
+{
+  "index": "documents",
+  "query": {
+    "bool": {
+      "should": [
+        {"wildcard": {"title": "*report*"}},
+        {"fuzzy": {"title": {"value": "raport", "fuzziness": "AUTO"}}}
+      ]
+    }
+  },
+  "size": 100
+}
+```
+
+#### Filtering Specific Fields
+
+```json
+{
+  "index": "customers",
+  "query": {
+    "match_all": {}
+  },
+  "_source": ["name", "email", "created_at"],
+  "size": 100
+}
+```
+
+Use `result_fields` to filter results in Redash:
+
+```json
+{
+  "index": "orders",
+  "query": {
+    "match_all": {}
+  },
+  "result_fields": ["order_id", "customer_name", "total"],
+  "size": 100
+}
+```
+
+### Kibana Query Format (Legacy)
+
+For simple queries, you can use the Kibana-style format:
+
+```json
+{
+  "index": "logs-*",
+  "query": "status:200 AND method:GET",
+  "size": 500,
+  "limit": 1000,
+  "sort": "@timestamp:desc",
+  "fields": ["timestamp", "message", "level"]
+}
+```
+
+## Aggregations
+
+Elasticsearch aggregations allow you to analyze and summarize your data:
+
+### Terms Aggregation (Group By)
+
+```json
+{
+  "index": "logs",
+  "query": {
+    "match_all": {}
+  },
+  "size": 0,
+  "aggs": {
+    "status_codes": {
+      "terms": {
+        "field": "status_code",
+        "size": 10
+      }
+    }
+  }
+}
+```
+
+### Date Histogram Aggregation
+
+```json
+{
+  "index": "events-*",
+  "query": {
+    "range": {
+      "@timestamp": {
+        "gte": "now-30d/d",
+        "lte": "now/d"
+      }
+    }
+  },
+  "size": 0,
+  "aggs": {
+    "events_over_time": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "calendar_interval": "day"
+      }
+    }
+  }
+}
+```
+
+### Metric Aggregations (Sum, Avg, Min, Max)
+
+```json
+{
+  "index": "sales",
+  "query": {
+    "range": {
+      "date": {
+        "gte": "2024-01-01",
+        "lte": "2024-12-31"
+      }
+    }
+  },
+  "size": 0,
+  "aggs": {
+    "total_revenue": {
+      "sum": {
+        "field": "amount"
+      }
+    },
+    "average_order": {
+      "avg": {
+        "field": "amount"
+      }
+    },
+    "min_order": {
+      "min": {
+        "field": "amount"
+      }
+    },
+    "max_order": {
+      "max": {
+        "field": "amount"
+      }
+    }
+  }
+}
+```
+
+### Nested Aggregations
+
+```json
+{
+  "index": "orders",
+  "query": {
+    "match_all": {}
+  },
+  "size": 0,
+  "aggs": {
+    "by_customer": {
+      "terms": {
+        "field": "customer_id",
+        "size": 10
+      },
+      "aggs": {
+        "total_spent": {
+          "sum": {
+            "field": "total"
+          }
+        },
+        "avg_order_value": {
+          "avg": {
+            "field": "total"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Bucket Selector (Filter Aggregation Results)
+
+```json
+{
+  "index": "products",
+  "query": {
+    "match_all": {}
+  },
+  "size": 0,
+  "aggs": {
+    "by_category": {
+      "terms": {
+        "field": "category.keyword",
+        "size": 100
+      },
+      "aggs": {
+        "total_sales": {
+          "sum": {
+            "field": "sales"
+          }
+        },
+        "high_sales_filter": {
+          "bucket_selector": {
+            "buckets_path": {
+              "totalSales": "total_sales"
+            },
+            "script": "params.totalSales > 10000"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Percentiles Aggregation
+
+```json
+{
+  "index": "response_times",
+  "query": {
+    "match_all": {}
+  },
+  "size": 0,
+  "aggs": {
+    "response_time_percentiles": {
+      "percentiles": {
+        "field": "response_time_ms",
+        "percents": [50, 75, 90, 95, 99]
+      }
+    }
+  }
+}
+```
+
+### Cardinality (Unique Count)
+
+```json
+{
+  "index": "visits",
+  "query": {
+    "range": {
+      "timestamp": {
+        "gte": "now-7d/d"
+      }
+    }
+  },
+  "size": 0,
+  "aggs": {
+    "unique_visitors": {
+      "cardinality": {
+        "field": "user_id"
+      }
+    }
+  }
+}
+```
+
+## Advanced Query Features
+
+### Sorting Results
+
+```json
+{
+  "index": "articles",
+  "query": {
+    "match": {"category": "technology"}
+  },
+  "sort": [
+    {"published_date": {"order": "desc"}},
+    {"views": {"order": "desc"}}
+  ],
+  "size": 50
+}
+```
+
+### Multi-Field Search
+
+```json
+{
+  "index": "documents",
+  "query": {
+    "multi_match": {
+      "query": "elasticsearch tutorial",
+      "fields": ["title^3", "content", "tags^2"],
+      "type": "best_fields"
+    }
+  },
+  "size": 100
+}
+```
+
+### Nested Fields Query
+
+```json
+{
+  "index": "products",
+  "query": {
+    "nested": {
+      "path": "reviews",
+      "query": {
+        "bool": {
+          "must": [
+            {"range": {"reviews.rating": {"gte": 4}}},
+            {"match": {"reviews.comment": "excellent"}}
+          ]
+        }
+      }
+    }
+  },
+  "size": 50
+}
+```
+
+## Type Mapping
+
+Elasticsearch field types are automatically mapped to Redash column types:
+
+- `integer`, `long` → Integer
+- `float`, `double` → Float
+- `boolean` → Boolean
+- `date` → Date
+- `string`, `text`, `keyword` → String
+- `object` → String (serialized)
+
+## Best Practices
+
+1. **Use size parameter**: Always set appropriate `size` limits to control result set size
+2. **Leverage aggregations**: Use aggregations instead of retrieving all documents for analytics
+3. **Filter before aggregating**: Apply filters in the query clause before aggregations
+4. **Use keyword fields**: For exact matches and aggregations, use `.keyword` fields
+5. **Set appropriate timeouts**: Configure timeouts for long-running queries
+6. **Index patterns**: Use wildcards (e.g., `logs-*`) to query multiple indices
+7. **Monitor query performance**: Check query execution time and optimize as needed
+8. **Use _source filtering**: Request only the fields you need to reduce data transfer

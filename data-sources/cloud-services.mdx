@@ -1,0 +1,544 @@
+---
+title: Cloud Services
+description: Connect to BigQuery, Snowflake, Redshift, Athena, Databricks, and other cloud data platforms
+---
+
+Redash integrates with major cloud data warehouses and analytics platforms. This guide covers configuration and best practices.
+
+## BigQuery
+
+Google BigQuery is a serverless, highly scalable data warehouse.
+
+### Configuration
+
+<ParamField path="projectId" type="string" required>
+  Google Cloud Project ID
+</ParamField>
+
+<ParamField path="jsonKeyFile" type="string">
+  Base64-encoded JSON service account key. If omitted, Application Default Credentials (ADC) are used
+</ParamField>
+
+<ParamField path="loadSchema" type="boolean" default="false">
+  Load dataset and table schema in schema browser
+</ParamField>
+
+<ParamField path="useStandardSql" type="boolean" default="true">
+  Use Standard SQL (recommended) instead of Legacy SQL
+</ParamField>
+
+<ParamField path="location" type="string">
+  Processing location (e.g., `US`, `EU`, `us-central1`)
+</ParamField>
+
+<ParamField path="totalMBytesProcessedLimit" type="number">
+  Maximum megabytes to scan per query (cost control)
+</ParamField>
+
+<ParamField path="maximumBillingTier" type="number">
+  Maximum billing tier for query execution
+</ParamField>
+
+<ParamField path="userDefinedFunctionResourceUri" type="string">
+  Comma-separated GCS URIs for UDF libraries (e.g., `gs://bucket/lib1.js,gs://bucket/lib2.js`)
+</ParamField>
+
+<ParamField path="useQueryAnnotation" type="boolean" default="false">
+  Annotate queries with metadata as comments
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Project ID: my-gcp-project
+JSON Key File: <base64-encoded-key>
+Load Schema: true
+Use Standard SQL: true
+Processing Location: US
+Scanned Data Limit (MB): 1000
+```
+
+### Service Account Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Navigate to **IAM & Admin** → **Service Accounts**
+3. Create a new service account
+4. Grant roles:
+   - `BigQuery Data Viewer`
+   - `BigQuery Job User`
+5. Create JSON key and download
+6. Base64 encode the JSON key:
+   ```bash
+   cat key.json | base64 -w 0
+   ```
+7. Paste encoded key in configuration
+
+### Query Examples
+
+```sql
+-- Standard SQL
+SELECT 
+  user_id,
+  COUNT(*) as event_count,
+  DATE(timestamp) as event_date
+FROM `project.dataset.events`
+WHERE DATE(timestamp) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+GROUP BY user_id, event_date
+ORDER BY event_count DESC
+LIMIT 100;
+```
+
+### Cost Control
+
+BigQuery charges based on data scanned:
+
+- Set `totalMBytesProcessedLimit` to prevent expensive queries
+- Query metadata is returned showing data scanned
+- Use partitioned tables to reduce scan size
+- Preview data with `LIMIT` and table suffixes
+
+---
+
+## Snowflake
+
+Snowflake is a cloud-native data warehouse platform.
+
+### Configuration
+
+<ParamField path="account" type="string" required>
+  Snowflake account identifier (e.g., `xy12345`)
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Snowflake username
+</ParamField>
+
+<ParamField path="password" type="string">
+  User password (either password or private key required)
+</ParamField>
+
+<ParamField path="private_key_File" type="string">
+  Base64-encoded private key for key-pair authentication
+</ParamField>
+
+<ParamField path="private_key_pwd" type="string">
+  Private key passphrase (if encrypted)
+</ParamField>
+
+<ParamField path="warehouse" type="string" required>
+  Snowflake warehouse name
+</ParamField>
+
+<ParamField path="database" type="string" required>
+  Database name (can include schema: `database.schema`)
+</ParamField>
+
+<ParamField path="region" type="string" default="us-west">
+  Snowflake region (e.g., `us-west`, `eu-central-1`)
+</ParamField>
+
+<ParamField path="host" type="string">
+  Full Snowflake host (overrides account/region if provided)
+</ParamField>
+
+<ParamField path="lower_case_columns" type="boolean" default="false">
+  Return column names in lowercase
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Account: xy12345
+User: redash_user
+Password: ••••••••
+Warehouse: COMPUTE_WH
+Database: ANALYTICS_DB
+Region: us-west
+```
+
+### Key-Pair Authentication
+
+1. Generate key pair:
+   ```bash
+   openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+   openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
+   ```
+
+2. Assign public key to Snowflake user:
+   ```sql
+   ALTER USER redash_user SET RSA_PUBLIC_KEY='MIIBIjANBg...';
+   ```
+
+3. Base64 encode private key:
+   ```bash
+   cat rsa_key.p8 | base64 -w 0
+   ```
+
+4. Add to `private_key_File` configuration
+
+### Query Examples
+
+```sql
+SELECT 
+  customer_id,
+  SUM(total_amount) as total_spent,
+  COUNT(DISTINCT order_id) as order_count
+FROM orders
+WHERE order_date >= DATEADD(day, -30, CURRENT_DATE())
+GROUP BY customer_id
+HAVING total_spent > 1000
+ORDER BY total_spent DESC;
+```
+
+---
+
+## Amazon Redshift
+
+Amazon Redshift is AWS's data warehouse service.
+
+### Configuration
+
+<ParamField path="host" type="string" required>
+  Redshift cluster endpoint
+</ParamField>
+
+<ParamField path="port" type="number" required>
+  Port (default: 5439)
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Database username
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  Database password
+</ParamField>
+
+<ParamField path="dbname" type="string" required>
+  Database name
+</ParamField>
+
+<ParamField path="sslmode" type="string" default="prefer">
+  SSL connection mode
+</ParamField>
+
+<ParamField path="adhoc_query_group" type="string" default="default">
+  Query group for ad-hoc queries
+</ParamField>
+
+<ParamField path="scheduled_query_group" type="string" default="default">
+  Query group for scheduled queries
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Host: my-cluster.abc123.us-west-2.redshift.amazonaws.com
+Port: 5439
+User: redash_user
+Password: ••••••••
+Database Name: analytics
+SSL Mode: prefer
+Query Group for Adhoc Queries: redash_adhoc
+```
+
+### IAM Authentication
+
+For IAM-based authentication, use the **Redshift (with IAM User/Role)** data source type:
+
+<ParamField path="aws_region" type="string" required>
+  AWS region (e.g., `us-west-2`)
+</ParamField>
+
+<ParamField path="clusterid" type="string" required>
+  Redshift cluster identifier
+</ParamField>
+
+<ParamField path="aws_access_key_id" type="string">
+  AWS access key ID (for IAM user)
+</ParamField>
+
+<ParamField path="aws_secret_access_key" type="string">
+  AWS secret access key
+</ParamField>
+
+<ParamField path="rolename" type="string">
+  IAM role ARN to assume
+</ParamField>
+
+### Query Optimization
+
+```sql
+-- Use EXPLAIN to analyze query plans
+EXPLAIN
+SELECT * FROM large_table WHERE date >= '2024-01-01';
+
+-- Use distribution and sort keys
+SELECT * FROM sales
+WHERE sale_date BETWEEN '2024-01-01' AND '2024-01-31'
+ORDER BY sale_date;
+```
+
+---
+
+## Amazon Athena
+
+Amazon Athena is a serverless interactive query service for S3 data.
+
+### Configuration
+
+<ParamField path="region" type="string" required>
+  AWS region (e.g., `us-east-1`)
+</ParamField>
+
+<ParamField path="aws_access_key" type="string">
+  AWS access key ID (optional if using IAM role)
+</ParamField>
+
+<ParamField path="aws_secret_key" type="string">
+  AWS secret access key
+</ParamField>
+
+<ParamField path="s3_staging_dir" type="string" required>
+  S3 path for query results (e.g., `s3://my-bucket/athena-results/`)
+</ParamField>
+
+<ParamField path="schema" type="string" default="default">
+  Default schema/database name
+</ParamField>
+
+<ParamField path="work_group" type="string" default="primary">
+  Athena workgroup name
+</ParamField>
+
+<ParamField path="glue" type="boolean">
+  Use AWS Glue Data Catalog
+</ParamField>
+
+<ParamField path="catalog_ids" type="string">
+  Comma-separated Glue catalog IDs (leave blank for default)
+</ParamField>
+
+<ParamField path="cost_per_tb" type="number" default="5">
+  Athena cost per TB scanned (USD) for cost estimation
+</ParamField>
+
+<ParamField path="result_reuse_enable" type="boolean">
+  Enable query result reuse
+</ParamField>
+
+<ParamField path="result_reuse_minutes" type="number" default="60">
+  Minutes to reuse cached results
+</ParamField>
+
+### Example Configuration
+
+```yaml
+AWS Region: us-east-1
+S3 Staging (Query Results) Bucket Path: s3://my-athena-results/
+Schema Name: default
+Athena Work Group: primary
+Use Glue Data Catalog: true
+Athena cost per Tb scanned (USD): 5
+```
+
+### IAM Role Configuration
+
+Set environment variable `ATHENA_ASSUME_ROLE=true` to use IAM role assumption:
+
+```yaml
+IAM role to assume: arn:aws:iam::123456789012:role/RedashAthenaRole
+External ID: optional-external-id
+```
+
+### Query Examples
+
+```sql
+-- Query Parquet data in S3
+SELECT 
+  user_id,
+  COUNT(*) as visits,
+  DATE_TRUNC('day', timestamp) as visit_date
+FROM "default"."web_logs"
+WHERE year = '2024' 
+  AND month = '01'
+GROUP BY user_id, DATE_TRUNC('day', timestamp);
+```
+
+---
+
+## Databricks
+
+Databricks is a unified analytics platform built on Apache Spark.
+
+### Configuration
+
+<ParamField path="host" type="string" required>
+  Databricks workspace URL (e.g., `dbc-abc12345-6789.cloud.databricks.com`)
+</ParamField>
+
+<ParamField path="http_path" type="string" required>
+  HTTP path to cluster or SQL warehouse (e.g., `/sql/1.0/warehouses/abc123def456`)
+</ParamField>
+
+<ParamField path="http_password" type="string" required>
+  Personal access token
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Host: dbc-abc12345-6789.cloud.databricks.com
+HTTP Path: /sql/1.0/warehouses/abc123def456
+Access Token: ••••••••
+```
+
+### Getting HTTP Path
+
+1. Go to Databricks workspace
+2. Navigate to **SQL Warehouses** or **Compute**
+3. Select your warehouse/cluster
+4. Go to **Connection Details**
+5. Copy the **HTTP Path**
+
+### Personal Access Token
+
+1. Click user icon → **Settings**
+2. Go to **Access Tokens**
+3. Click **Generate New Token**
+4. Copy token and save securely
+
+### Query Examples
+
+```sql
+-- Standard SQL on Delta tables
+SELECT 
+  category,
+  COUNT(*) as product_count,
+  AVG(price) as avg_price
+FROM products
+WHERE is_active = true
+GROUP BY category
+ORDER BY product_count DESC;
+```
+
+### Row Limit
+
+Databricks queries are limited to 20,000 rows by default. Set `DATABRICKS_ROW_LIMIT` environment variable to change:
+
+```bash
+DATABRICKS_ROW_LIMIT=50000
+```
+
+---
+
+## Performance Best Practices
+
+<AccordionGroup>
+  <Accordion title="BigQuery Optimization">
+    - Use partitioned tables for time-series data
+    - Leverage clustering on frequently filtered columns
+    - Use materialized views for repeated queries
+    - Filter on partition columns first
+    - Avoid `SELECT *` on wide tables
+    - Set byte scan limits for cost control
+  </Accordion>
+  
+  <Accordion title="Snowflake Optimization">
+    - Use appropriate warehouse size
+    - Suspend warehouses when not in use
+    - Leverage result caching (24-hour cache)
+    - Use clustering keys for large tables
+    - Partition by date for time-series
+    - Consider materialized views
+  </Accordion>
+  
+  <Accordion title="Redshift Optimization">
+    - Use distribution and sort keys
+    - Analyze tables regularly: `ANALYZE table_name;`
+    - Vacuum tables to reclaim space
+    - Use WLM (Workload Management) queues
+    - Monitor query performance with system tables
+  </Accordion>
+  
+  <Accordion title="Athena Optimization">
+    - Use columnar formats (Parquet, ORC)
+    - Partition data by date/time
+    - Compress data files
+    - Use appropriate file sizes (128MB-1GB)
+    - Leverage Glue Data Catalog
+    - Use workgroups for cost allocation
+  </Accordion>
+</AccordionGroup>
+
+## Cost Management
+
+<Tabs>
+  <Tab title="BigQuery">
+    - Monitor query costs in metadata
+    - Set `totalMBytesProcessedLimit`
+    - Use on-demand vs flat-rate pricing
+    - Leverage BI Engine for dashboards
+    - Set quotas at project level
+  </Tab>
+  
+  <Tab title="Snowflake">
+    - Auto-suspend warehouses
+    - Use multi-cluster warehouses for concurrency
+    - Monitor credit usage
+    - Set resource monitors
+    - Use appropriate warehouse sizes
+  </Tab>
+  
+  <Tab title="Athena">
+    - Partition and compress data
+    - Use columnar formats
+    - Set workgroup limits
+    - Enable result reuse
+    - Monitor data scanned per query
+  </Tab>
+</Tabs>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="BigQuery Authentication">
+    **Problem**: "Could not authenticate with service account"
+    
+    **Solutions**:
+    - Verify JSON key is valid and properly base64-encoded
+    - Check service account has required roles
+    - Ensure ADC is configured if not using JSON key
+    - Verify project ID is correct
+  </Accordion>
+  
+  <Accordion title="Snowflake Warehouse Suspended">
+    **Problem**: "Warehouse is suspended"
+    
+    **Solutions**:
+    - Resume warehouse manually
+    - Check auto-suspend settings
+    - Verify user has USAGE privilege on warehouse
+  </Accordion>
+  
+  <Accordion title="Athena S3 Permissions">
+    **Problem**: "Access Denied" on S3 staging directory
+    
+    **Solutions**:
+    - Verify S3 bucket permissions
+    - Check IAM policy includes S3 access
+    - Ensure bucket exists and path is correct
+    - Add bucket policy for Athena access
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Writing Queries" icon="code" href="/queries/writing-queries">
+    Start querying your cloud data warehouse
+  </Card>
+  <Card title="Custom Sources" icon="code" href="/data-sources/custom-sources">
+    Explore Python, JSON, and CSV sources
+  </Card>
+</CardGroup>

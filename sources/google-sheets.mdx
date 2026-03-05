@@ -1,0 +1,274 @@
+---
+title: Google Sheets
+description: Connect Redash to Google Sheets to query spreadsheet data
+---
+
+## Overview
+
+The Google Sheets data source allows you to query data from Google Spreadsheets directly in Redash. This is useful for accessing data maintained in spreadsheets, collaborating with non-technical team members, or quickly prototyping dashboards.
+
+## Setup
+
+### Prerequisites
+
+- Google Sheets with data
+- A Google Cloud project with the Google Sheets API enabled
+- Service account credentials OR Application Default Credentials (ADC)
+- The service account must have access to the spreadsheets you want to query
+
+### Creating a Service Account
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the **Google Sheets API**
+4. Create a service account:
+   - Navigate to **IAM & Admin > Service Accounts**
+   - Click **Create Service Account**
+   - Create a JSON key file
+5. Share your Google Sheet with the service account email address (give at least "Viewer" permission)
+
+### Configuration
+
+<ParamField path="jsonKeyFile" type="string">
+  Base64-encoded JSON key file from your Google service account. If omitted, Application Default Credentials (ADC) will be used.
+</ParamField>
+
+<Info>
+The service account email must be added as a viewer or editor to any spreadsheet you want to query.
+</Info>
+
+## Authentication
+
+### Using Service Account Key
+
+1. Download your service account JSON key file
+2. Base64-encode the file contents
+3. Add the encoded string to the `jsonKeyFile` configuration field
+4. Share each spreadsheet with the service account email
+
+```bash
+# Encode the key file
+base64 -i service-account-key.json
+```
+
+### Using Application Default Credentials
+
+If running in Google Cloud Platform, you can omit the `jsonKeyFile` and use ADC. Ensure the compute service account has access to your spreadsheets.
+
+## Query Syntax
+
+The query format is:
+
+```
+SPREADSHEET_KEY|WORKSHEET_IDENTIFIER
+```
+
+### Spreadsheet Key
+
+The spreadsheet key can be:
+
+**Spreadsheet ID** (from the URL):
+```
+1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+```
+
+**Full Spreadsheet URL**:
+```
+https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
+```
+
+### Worksheet Identifier
+
+The worksheet can be specified by:
+
+**Index (zero-based)**:
+```
+1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms|0
+```
+
+**Name (quoted)**:
+```
+1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms|"Sales Data"
+```
+
+**Default (first sheet)**:
+```
+1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+```
+
+## Query Examples
+
+### Query First Worksheet
+
+```
+1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+```
+
+### Query Second Worksheet (Index 1)
+
+```
+1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms|1
+```
+
+### Query Worksheet by Name
+
+```
+1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms|"Q1 Sales"
+```
+
+### Using Full URL
+
+```
+https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit|"Revenue"
+```
+
+## Data Processing
+
+### Header Row
+
+The first row of the worksheet is treated as the header row and becomes column names. If a header cell is empty, it will be auto-named (e.g., `column_A`, `column_B`).
+
+### Duplicate Column Names
+
+If duplicate column names exist, they are automatically suffixed with numbers:
+- `name`, `name1`, `name2`
+
+### Data Type Detection
+
+Redash automatically detects data types based on the first data row (row 2):
+
+- **Boolean**: Values like `true`, `false`, `TRUE`, `FALSE`
+- **Integer**: Whole numbers
+- **Float**: Decimal numbers
+- **DateTime**: Date and time strings (parsed automatically)
+- **String**: All other values
+
+### Empty Cells
+
+Empty cells are converted to `NULL` values in the query results.
+
+## Use Cases
+
+### Collaborative Data Entry
+
+Allow non-technical team members to update data in Google Sheets while automatically reflecting changes in Redash dashboards.
+
+### Quick Prototyping
+
+Rapidly prototype dashboards using spreadsheet data before migrating to a database.
+
+### Reference Data Management
+
+Maintain lookup tables, category mappings, or configuration data in an easily editable format.
+
+### Budget and Planning
+
+Query financial planning data, budgets, or forecasts maintained in spreadsheets.
+
+### Survey Results
+
+Analyze survey or form responses collected in Google Sheets (e.g., via Google Forms).
+
+### Manual Data Collection
+
+Visualize data that's collected manually or doesn't exist in a structured database.
+
+## Practical Examples
+
+### Sales Pipeline Dashboard
+
+Maintain a sales pipeline in Google Sheets with columns:
+- Lead Name
+- Status
+- Deal Value
+- Expected Close Date
+- Sales Rep
+
+Query it in Redash to create pipeline visualizations and conversion funnels.
+
+### Marketing Campaign Tracker
+
+Track campaigns with:
+- Campaign Name
+- Start Date
+- Budget
+- Actual Spend
+- Leads Generated
+- Conversions
+
+Visualize ROI and performance metrics in Redash.
+
+### Inventory Management
+
+Maintain inventory counts in Sheets:
+- Product SKU
+- Product Name
+- Quantity Available
+- Reorder Level
+- Last Updated
+
+Create alerts when inventory falls below reorder levels.
+
+## Tips
+
+- **Share with Service Account**: Always share your spreadsheet with the service account email (found in your JSON key file)
+- **Use Named Worksheets**: Using worksheet names (quoted) is more reliable than indexes if sheets are reordered
+- **Consistent Headers**: Keep header names consistent and avoid special characters
+- **Data Validation**: Use Google Sheets' data validation features to ensure consistent data types
+- **Refresh Rate**: Remember that queries fetch live data from Google Sheets, so changes are reflected immediately
+- **Performance**: For large datasets (>10,000 rows), consider migrating to a database for better performance
+
+## Limitations
+
+- The entire worksheet is loaded into memory, so very large sheets may cause performance issues
+- Google Sheets API has rate limits (currently 100 requests per 100 seconds per user)
+- Complex formulas are evaluated by Google Sheets before Redash receives the data
+- Merged cells may cause unexpected behavior
+
+## Troubleshooting
+
+### "Spreadsheet not found"
+
+Verify:
+- The spreadsheet ID or URL is correct
+- The spreadsheet has been shared with the service account email
+- The service account has at least "Viewer" permission
+
+### "Worksheet number X not found"
+
+- Check the worksheet index (zero-based: first sheet = 0, second = 1, etc.)
+- Verify the spreadsheet has enough worksheets
+
+### "Worksheet title 'X' not found"
+
+- Verify the worksheet name exactly matches (case-sensitive)
+- Ensure the name is properly quoted in the query
+- Check for extra spaces in the worksheet name
+
+### Authentication Errors
+
+- Ensure the JSON key file is correctly base64-encoded
+- Verify the Google Sheets API is enabled in your Google Cloud project
+- Check that the service account hasn't been deleted or disabled
+
+### API Rate Limiting
+
+If you hit rate limits:
+- Increase the query cache time in Redash
+- Reduce query frequency
+- Consolidate multiple queries into fewer spreadsheet reads
+- Consider requesting a quota increase from Google
+
+## Finding Your Spreadsheet ID
+
+From the Google Sheets URL:
+```
+https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit#gid=0
+                                        ^^^^^^^^^^^^^^
+```
+
+The `SPREADSHEET_ID` is the long string between `/d/` and `/edit`.
+
+## Schema Browser
+
+The Google Sheets data source doesn't support the schema browser since spreadsheets are identified at query time rather than connection time.

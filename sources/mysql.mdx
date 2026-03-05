@@ -1,0 +1,268 @@
+---
+title: MySQL
+description: Connect Redash to MySQL and MariaDB databases
+---
+
+## Overview
+
+The MySQL data source supports connections to MySQL and MariaDB databases with optional SSL/TLS encryption. It provides full access to database schemas, tables, and query execution capabilities.
+
+## Connection Setup
+
+### Basic Configuration
+
+To connect to a MySQL database, provide the following configuration:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `db` | string | Yes | - | Database name to connect to |
+| `host` | string | No | `127.0.0.1` | Database server hostname or IP address |
+| `port` | number | No | `3306` | Database server port |
+| `user` | string | No | - | Username for authentication |
+| `passwd` | string | No | - | Password for authentication |
+| `connect_timeout` | number | No | `60` | Connection timeout in seconds |
+| `charset` | string | No | `utf8mb4` | Character set for connection |
+| `use_unicode` | boolean | No | `true` | Enable Unicode support |
+| `autocommit` | boolean | No | `false` | Enable autocommit mode |
+
+### Connection String Examples
+
+**Local database:**
+```
+host: 127.0.0.1
+port: 3306
+user: root
+passwd: password
+db: analytics
+```
+
+**Remote database with custom settings:**
+```
+host: mysql.example.com
+port: 3306
+user: redash_user
+passwd: secure_password
+db: production
+connect_timeout: 30
+charset: utf8mb4
+use_unicode: true
+```
+
+**Local development:**
+```
+host: localhost
+port: 3306
+user: dev
+passwd: dev123
+db: test_database
+autocommit: true
+```
+
+## SSL/TLS Configuration
+
+MySQL supports secure connections with SSL/TLS encryption. SSL settings are controlled by environment variable `MYSQL_SHOW_SSL_SETTINGS` (default: `true`).
+
+### SSL Modes
+
+| SSL Mode | Description |
+|----------|-------------|
+| `disabled` | No SSL connection |
+| `preferred` | Try SSL first, fall back to non-SSL (default) |
+| `required` | Require SSL connection |
+| `verify-ca` | Require SSL and verify server certificate |
+| `verify-identity` | Require SSL and verify certificate identity |
+
+### SSL Certificate Configuration
+
+| Field | Description |
+|-------|-------------|
+| `use_ssl` | Enable SSL connection |
+| `ssl_mode` | SSL mode (see table above) |
+| `ssl_cacert` | Path to CA certificate file |
+| `ssl_cert` | Path to client certificate file |
+| `ssl_key` | Path to client private key file |
+
+### SSL Configuration Example
+
+```
+host: secure-mysql.example.com
+port: 3306
+user: redash
+passwd: password
+db: production
+use_ssl: true
+ssl_mode: verify-ca
+ssl_cacert: /path/to/ca-cert.pem
+ssl_cert: /path/to/client-cert.pem
+ssl_key: /path/to/client-key.pem
+```
+
+<Note>
+SSL certificate paths should point to actual files on the Redash server filesystem. For Amazon RDS MySQL, use the RDS-specific data source which handles certificates automatically.
+</Note>
+
+## Amazon RDS MySQL
+
+Redash includes a specialized data source for Amazon RDS MySQL instances with simplified SSL configuration.
+
+### RDS Configuration
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `host` | string | Yes | - | RDS endpoint hostname |
+| `port` | number | No | `3306` | Database port |
+| `user` | string | Yes | - | Database username |
+| `passwd` | string | Yes | - | Database password |
+| `db` | string | Yes | - | Database name |
+| `use_ssl` | boolean | No | `false` | Enable SSL with RDS CA bundle |
+| `charset` | string | No | `utf8mb4` | Character set |
+
+### RDS Example
+
+```
+host: mydb.abc123.us-east-1.rds.amazonaws.com
+port: 3306
+user: admin
+passwd: rds_password
+db: production
+use_ssl: true
+```
+
+When `use_ssl` is enabled, the RDS data source automatically uses the bundled `rds-combined-ca-bundle.pem` certificate.
+
+## Query Features
+
+### Schema Discovery
+
+The MySQL data source automatically discovers:
+
+- All tables across all accessible databases
+- Column names, data types, and comments
+- Table comments and descriptions
+- Excludes system schemas: `information_schema`, `performance_schema`, `mysql`, `sys`
+
+### Schema Qualification
+
+Tables from the configured database appear without schema prefix:
+```
+users
+orders
+products
+```
+
+Tables from other databases include the schema name:
+```
+analytics.events
+reporting.dashboards
+```
+
+### Data Type Mapping
+
+MySQL types are mapped to Redash types:
+
+| MySQL Type | Redash Type |
+|-----------|-------------|
+| `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`, `BIGINT` | Integer |
+| `FLOAT`, `DOUBLE`, `DECIMAL` | Float |
+| `DATE` | Date |
+| `DATETIME`, `TIMESTAMP` | DateTime |
+| `CHAR`, `VARCHAR`, `TEXT`, `BLOB` | String |
+
+### Query Execution
+
+- **Multi-statement results**: If multiple result sets are returned, only the last one is used
+- **Query cancellation**: Long-running queries can be killed using MySQL's `KILL` command
+- **Threading**: Queries run in separate threads to support cancellation
+- **Character encoding**: Queries are executed with configured charset (default: `utf8mb4`)
+
+## Configuration Schema Reference
+
+Complete configuration schema from `redash/query_runner/mysql.py:55-117`:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "host": {"type": "string", "default": "127.0.0.1"},
+        "user": {"type": "string"},
+        "passwd": {"type": "string"},
+        "db": {"type": "string"},
+        "port": {"type": "number", "default": 3306},
+        "connect_timeout": {"type": "number", "default": 60},
+        "charset": {"type": "string", "default": "utf8mb4"},
+        "use_unicode": {"type": "boolean", "default": true},
+        "autocommit": {"type": "boolean", "default": false},
+        # SSL settings (when MYSQL_SHOW_SSL_SETTINGS=true)
+        "use_ssl": {"type": "boolean"},
+        "ssl_mode": {
+            "type": "string",
+            "default": "preferred",
+            "options": ["disabled", "preferred", "required", "verify-ca", "verify-identity"]
+        },
+        "ssl_cacert": {"type": "string"},
+        "ssl_cert": {"type": "string"},
+        "ssl_key": {"type": "string"}
+    },
+    "required": ["db"]
+}
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+**"Can't connect to MySQL server"**
+- Verify host and port are correct
+- Check that MySQL is running and accepting connections
+- Ensure firewall allows connections from Redash server
+- Verify `bind-address` in MySQL configuration
+
+**"Access denied for user"**
+- Verify username and password are correct
+- Check user has permissions from Redash server's IP:
+  ```sql
+  GRANT SELECT ON database.* TO 'redash'@'%' IDENTIFIED BY 'password';
+  FLUSH PRIVILEGES;
+  ```
+
+**"Unknown database"**
+- Verify the database name is correct and exists
+- Ensure the user has access to the specified database
+
+### SSL Connection Issues
+
+**"SSL connection error"**
+- Verify `use_ssl` is set to `true`
+- Check that MySQL has SSL enabled:
+  ```sql
+  SHOW VARIABLES LIKE '%ssl%';
+  ```
+- Ensure certificate paths are correct and files are readable
+
+**"Certificate verification failed"**
+- For `verify-ca` or `verify-identity` modes, ensure the CA certificate matches the server certificate
+- Check certificate expiration dates
+
+### Query Issues
+
+**"Commands out of sync"**
+- This can happen with multi-statement queries
+- Try running statements separately
+
+**"Lost connection to MySQL server during query"**
+- Query may have exceeded timeout
+- Check `max_allowed_packet` and `wait_timeout` settings
+- Consider optimizing the query
+
+## Best Practices
+
+1. **Use utf8mb4**: Always use `utf8mb4` charset for full Unicode support including emojis
+2. **Limit permissions**: Create a read-only user for Redash with minimal required permissions
+3. **Enable SSL**: Use SSL encryption for production databases
+4. **Connection timeouts**: Adjust `connect_timeout` based on network latency
+5. **Read replicas**: Point Redash to read replicas to avoid impacting production writes
+
+## Related Data Sources
+
+- **Amazon RDS MySQL**: Simplified configuration for RDS instances
+- **MariaDB**: Use the MySQL data source (fully compatible)

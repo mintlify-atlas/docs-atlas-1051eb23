@@ -1,0 +1,594 @@
+---
+title: Upgrading Redash
+description: Guide to upgrading Redash versions safely
+---
+
+Upgrade Redash to get new features, security updates, and bug fixes. Follow this guide for safe, successful upgrades.
+
+## Before You Upgrade
+
+### Check Release Notes
+
+Always review the [CHANGELOG](https://github.com/getredash/redash/blob/master/CHANGELOG.md) before upgrading:
+
+- Breaking changes
+- New features
+- Required migrations
+- Deprecated functionality
+
+### Version Compatibility
+
+- **Current Version**: 26.03.0-dev
+- **Python**: 3.13+
+- **PostgreSQL**: 12+
+- **Redis**: 5+
+- **Node**: 18+ (for building from source)
+
+### Backup First
+
+**Always backup before upgrading!**
+
+## Backup Procedures
+
+### PostgreSQL Backup
+
+#### Docker Compose
+
+```bash
+# Create backup directory
+mkdir -p ./backups
+
+# Backup database
+docker compose exec postgres pg_dump -U postgres postgres > ./backups/redash-$(date +%Y%m%d-%H%M%S).sql
+
+# Verify backup
+ls -lh ./backups/
+```
+
+#### Kubernetes
+
+```bash
+# Backup from pod
+kubectl exec -it postgres-0 -n redash -- \
+  pg_dump -U redash redash | gzip > redash-backup-$(date +%Y%m%d).sql.gz
+```
+
+#### Direct PostgreSQL
+
+```bash
+# Using pg_dump
+pg_dump -h localhost -U redash redash -F c -f redash-backup.dump
+
+# Compressed backup
+pg_dump -h localhost -U redash redash | gzip > redash-backup.sql.gz
+```
+
+### Environment Configuration Backup
+
+Save your environment variables:
+
+```bash
+# Docker Compose
+cp .env .env.backup-$(date +%Y%m%d)
+
+# Kubernetes
+kubectl get configmap redash-config -n redash -o yaml > redash-config-backup.yaml
+kubectl get secret redash-secrets -n redash -o yaml > redash-secrets-backup.yaml
+```
+
+### Redis Backup
+
+Redis data is non-critical (caching only) but can be backed up:
+
+```bash
+# Docker Compose
+docker compose exec redis redis-cli SAVE
+docker compose cp redis:/data/dump.rdb ./backups/redis-dump.rdb
+```
+
+## Upgrade Methods
+
+### Docker Compose Upgrade
+
+#### Standard Upgrade
+
+```bash
+# 1. Backup (see above)
+
+# 2. Pull new image
+docker compose pull
+
+# 3. Stop services
+docker compose down
+
+# 4. Update image tag (if pinned)
+# Edit compose.yaml to specify version:
+# image: redash/redash:10.1.0
+
+# 5. Start services
+docker compose up -d
+
+# 6. Run migrations
+docker compose run --rm server manage database migrate
+
+# 7. Verify upgrade
+docker compose logs -f server
+```
+
+#### Zero-Downtime Upgrade
+
+```bash
+# 1. Backup first
+
+# 2. Scale up with new version
+docker compose up -d --scale server=2 --no-recreate
+
+# 3. Run migrations (if any)
+docker compose run --rm server manage database migrate
+
+# 4. Stop old containers
+docker compose up -d --scale server=1
+
+# 5. Restart workers and scheduler
+docker compose restart worker scheduler
+```
+
+### Kubernetes Upgrade
+
+#### Rolling Update
+
+```bash
+# 1. Backup database
+
+# 2. Update image tag in deployment
+kubectl set image deployment/redash-server \
+  server=redash/redash:10.1.0 -n redash
+
+# 3. Wait for rollout
+kubectl rollout status deployment/redash-server -n redash
+
+# 4. Run migrations
+kubectl run -it --rm redash-migrate \
+  --image=redash/redash:10.1.0 \
+  --restart=Never \
+  --namespace=redash \
+  --command -- /app/manage.py database migrate
+
+# 5. Update other components
+kubectl set image deployment/redash-scheduler \
+  scheduler=redash/redash:10.1.0 -n redash
+kubectl set image deployment/redash-worker \
+  worker=redash/redash:10.1.0 -n redash
+
+# 6. Verify
+kubectl get pods -n redash
+```
+
+#### Using Helm
+
+```bash
+# Update values.yaml with new image tag
+helm upgrade redash ./redash-chart \
+  --namespace redash \
+  --set image.tag=10.1.0 \
+  --wait
+
+# Run migration job
+kubectl apply -f migration-job.yaml
+```
+
+### Manual Upgrade
+
+For installations not using containers:
+
+```bash
+# 1. Backup database
+
+# 2. Stop services
+sudo systemctl stop redash-server
+sudo systemctl stop redash-scheduler
+sudo systemctl stop redash-workers
+
+# 3. Pull latest code
+cd /opt/redash
+git fetch
+git checkout v10.1.0  # or desired version
+
+# 4. Update dependencies
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 5. Run migrations
+python manage.py database migrate
+
+# 6. Rebuild frontend (if needed)
+cd client
+npm install
+npm run build
+cd ..
+
+# 7. Restart services
+sudo systemctl start redash-server
+sudo systemctl start redash-scheduler
+sudo systemctl start redash-workers
+
+# 8. Verify
+sudo systemctl status redash-server
+```
+
+## Database Migrations
+
+Redash uses Alembic for database migrations.
+
+### Run Migrations
+
+```bash
+# Docker Compose
+docker compose run --rm server manage database migrate
+
+# Kubernetes
+kubectl run -it --rm migrate-db \
+  --image=redash/redash:latest \
+  --restart=Never \
+  --namespace=redash \
+  --command -- /app/manage.py database migrate
+
+# Direct
+python manage.py database migrate
+```
+
+### Check Migration Status
+
+```bash
+# View current revision
+python manage.py database current
+
+# View migration history
+python manage.py database history
+```
+
+### Migration Troubleshooting
+
+#### Failed Migration
+
+```bash
+# Check which migration failed
+python manage.py database current
+
+# View migration logs
+docker compose logs server | grep -i migration
+
+# Rollback to previous version if needed
+python manage.py database downgrade <revision>
+```
+
+#### Skip Failed Migration (Not Recommended)
+
+Only if you understand the consequences:
+
+```bash
+# Mark migration as complete without running
+python manage.py database stamp <revision>
+```
+
+## Major Version Upgrades
+
+For major version jumps (e.g., 8.x → 10.x):
+
+### Step-by-Step Major Upgrade
+
+1. **Review all intermediate changelogs**
+2. **Backup everything**
+3. **Test in staging environment first**
+4. **Upgrade incrementally** through major versions
+5. **Run migrations after each major version**
+
+```bash
+# Example: 8.x → 10.x
+# Upgrade to 9.0 first
+docker compose pull redash/redash:9.0.0
+docker compose up -d
+docker compose run --rm server manage database migrate
+
+# Then upgrade to 10.x
+docker compose pull redash/redash:10.1.0
+docker compose up -d
+docker compose run --rm server manage database migrate
+```
+
+### Breaking Changes by Version
+
+Check the [CHANGELOG](https://github.com/getredash/redash/blob/master/CHANGELOG.md) for:
+
+- Removed query runners
+- Changed environment variables
+- New required configuration
+- Deprecated features
+
+## Post-Upgrade Steps
+
+### Verify Installation
+
+```bash
+# Check version
+docker compose exec server /app/manage.py version
+
+# Check status
+docker compose exec server /app/manage.py status
+
+# View logs
+docker compose logs -f server
+```
+
+### Test Functionality
+
+1. **Login** - Verify authentication works
+2. **Run Query** - Execute a test query
+3. **View Dashboard** - Check existing dashboards
+4. **Scheduled Queries** - Verify scheduler is running
+5. **Alerts** - Test alert destinations
+
+### Refresh Schemas
+
+After upgrade, refresh data source schemas:
+
+```bash
+# Via UI
+Settings → Data Sources → Refresh Schema
+
+# Via CLI
+docker compose exec server /app/manage.py ds refresh_schemas
+```
+
+### Clear Cache
+
+```bash
+# Redis cache
+docker compose exec redis redis-cli FLUSHALL
+
+# Browser cache
+# Instruct users to hard-refresh (Ctrl+Shift+R)
+```
+
+## Rollback Procedures
+
+If upgrade fails:
+
+### Docker Compose Rollback
+
+```bash
+# 1. Stop services
+docker compose down
+
+# 2. Restore database
+docker compose up -d postgres
+docker compose exec -T postgres psql -U postgres < ./backups/redash-YYYYMMDD.sql
+
+# 3. Revert to old image
+docker compose pull redash/redash:<old-version>
+# Or edit compose.yaml to specify old version
+
+# 4. Start services
+docker compose up -d
+```
+
+### Kubernetes Rollback
+
+```bash
+# Rollback deployment
+kubectl rollout undo deployment/redash-server -n redash
+
+# Or rollback to specific revision
+kubectl rollout history deployment/redash-server -n redash
+kubectl rollout undo deployment/redash-server --to-revision=2 -n redash
+
+# Restore database if needed
+kubectl run -it --rm restore-db \
+  --image=postgres:18-alpine \
+  --restart=Never \
+  --namespace=redash \
+  --command -- psql $DATABASE_URL < backup.sql
+```
+
+## Upgrade Checklist
+
+Use this checklist for each upgrade:
+
+- [ ] Read release notes and changelog
+- [ ] Test upgrade in staging environment
+- [ ] Backup PostgreSQL database
+- [ ] Backup environment configuration
+- [ ] Note current Redash version
+- [ ] Schedule maintenance window
+- [ ] Notify users of downtime (if applicable)
+- [ ] Pull new Docker image or update code
+- [ ] Stop services (if not rolling update)
+- [ ] Run database migrations
+- [ ] Start services
+- [ ] Verify version and status
+- [ ] Test core functionality
+- [ ] Refresh data source schemas
+- [ ] Clear cache if needed
+- [ ] Monitor logs for errors
+- [ ] Notify users upgrade is complete
+
+## Common Issues
+
+### Database Connection Errors
+
+**Symptom**: `OperationalError: could not connect to server`
+
+**Solution**:
+```bash
+# Check PostgreSQL is running
+docker compose ps postgres
+
+# Verify connection string
+docker compose exec server env | grep DATABASE_URL
+
+# Test connection
+docker compose exec server psql $REDASH_DATABASE_URL -c "SELECT 1;"
+```
+
+### Migration Failures
+
+**Symptom**: Migration script errors
+
+**Solution**:
+```bash
+# Check current migration state
+docker compose run --rm server manage database current
+
+# View detailed migration logs
+docker compose logs server | grep -A 20 -B 20 -i alembic
+
+# If safe, mark as complete
+# docker compose run --rm server manage database stamp head
+```
+
+### Workers Not Starting
+
+**Symptom**: Jobs not processing
+
+**Solution**:
+```bash
+# Check worker logs
+docker compose logs worker
+
+# Verify Redis connection
+docker compose exec worker env | grep REDIS_URL
+
+# Restart workers
+docker compose restart worker
+
+# Check RQ status
+docker compose exec server /app/manage.py rq info
+```
+
+### Frontend Assets Not Loading
+
+**Symptom**: 404 errors for JS/CSS files
+
+**Solution**:
+```bash
+# Rebuild frontend (if building from source)
+cd client
+npm run build
+
+# Or use complete image
+# In compose.yaml, remove skip_frontend_build arg
+
+# Clear browser cache
+# Instruct users to hard-refresh
+```
+
+### Performance Degradation
+
+**Symptom**: Slow queries after upgrade
+
+**Solution**:
+```bash
+# Vacuum database
+docker compose exec postgres psql -U postgres -d redash -c "VACUUM ANALYZE;"
+
+# Clear old query results
+docker compose exec server /app/manage.py database cleanup
+
+# Adjust worker count if needed
+# In compose.yaml or env:
+# WORKERS_COUNT=4
+```
+
+## Automation
+
+### Automated Upgrade Script
+
+```bash
+#!/bin/bash
+set -e
+
+VERSION="$1"
+BACKUP_DIR="./backups"
+
+echo "Upgrading Redash to version $VERSION"
+
+# Create backup
+mkdir -p $BACKUP_DIR
+echo "Creating backup..."
+docker compose exec -T postgres pg_dump -U postgres postgres > $BACKUP_DIR/redash-$(date +%Y%m%d-%H%M%S).sql
+
+# Pull new image
+echo "Pulling new image..."
+docker compose pull
+
+# Stop and recreate services
+echo "Restarting services..."
+docker compose up -d --force-recreate
+
+# Run migrations
+echo "Running migrations..."
+docker compose run --rm server manage database migrate
+
+# Verify
+echo "Verifying upgrade..."
+VERSION_INSTALLED=$(docker compose exec -T server /app/manage.py version)
+echo "Installed version: $VERSION_INSTALLED"
+
+echo "Upgrade complete!"
+```
+
+### Kubernetes Upgrade Job
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redash-upgrade
+  namespace: redash
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: backup
+          image: postgres:18-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              pg_dump $DATABASE_URL | gzip > /backup/redash-$(date +%Y%m%d).sql.gz
+          envFrom:
+            - configMapRef:
+                name: redash-config
+          volumeMounts:
+            - name: backup
+              mountPath: /backup
+      containers:
+        - name: migrate
+          image: redash/redash:10.1.0
+          command: ["/app/manage.py", "database", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: redash-config
+            - secretRef:
+                name: redash-secrets
+      volumes:
+        - name: backup
+          persistentVolumeClaim:
+            claimName: backup-pvc
+```
+
+## Getting Help
+
+If you encounter issues:
+
+1. **Check logs**: `docker compose logs -f`
+2. **Search issues**: [GitHub Issues](https://github.com/getredash/redash/issues)
+3. **Community**: [Discord](https://discord.gg/tN5MdmfGBp)
+4. **Documentation**: [redash.io/help](https://redash.io/help)
+
+## Next Steps
+
+- [Environment Variables](/deployment/environment-variables)
+- [Docker Deployment](/deployment/docker)
+- [Kubernetes Deployment](/deployment/kubernetes)

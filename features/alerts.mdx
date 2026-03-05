@@ -1,0 +1,396 @@
+---
+title: Alerts
+description: Set up automated notifications when query results meet specified conditions
+---
+
+Alerts automatically monitor your query results and send notifications when specific conditions are met, helping you stay informed about important changes in your data.
+
+## Creating an Alert
+
+To create an alert:
+
+1. Create and save a query that returns the data you want to monitor
+2. Execute the query to verify it returns results
+3. Click **Alerts** → **New Alert** from the query menu
+4. Configure the alert settings
+5. Save the alert
+
+## Alert Configuration
+
+Alerts consist of several key components:
+
+### Alert Name
+
+Give your alert a descriptive name that indicates:
+
+- What metric is being monitored
+- What condition triggers the alert
+- What action should be taken
+
+Example: "Daily Active Users Below 1000"
+
+### Query Selection
+
+The alert is based on a query that:
+
+- Returns at least one row of data
+- Contains a column with the value to monitor
+- Executes successfully
+
+**Important:** The query must be scheduled to run automatically. Alerts only evaluate when the query executes.
+
+### Alert Criteria
+
+Define when the alert should trigger:
+
+#### Value Column
+
+Select which column from your query results contains the value to monitor.
+
+#### Selector
+
+Choose how to extract a single value from the results:
+
+- **first** - Use the first row's value
+- **min** - Use the minimum value across all rows
+- **max** - Use the maximum value across all rows
+
+#### Condition
+
+Set the comparison operator:
+
+- `>` (greater than)
+- `≥` (greater than or equals)
+- `<` (less than)  
+- `≤` (less than or equals)
+- `=` (equals)
+- `≠` (not equal to)
+
+**Note:** For text columns, only **equals** and **not equal to** are supported.
+
+#### Threshold
+
+Enter the value to compare against.
+
+**Example criteria:**
+```
+Selector: first
+Value column: daily_active_users
+Condition: <
+Threshold: 1000
+```
+
+This triggers when the first row's `daily_active_users` value is less than 1000.
+
+### Alert Rearm
+
+Rearm controls how often the alert can trigger:
+
+- **Never** - Alert triggers every time the condition is met
+- **After condition cleared** - Alert triggers again only after the condition becomes false and then true again
+
+Example with "After condition cleared":
+
+1. Query returns 900 (< 1000) → Alert triggers
+2. Query returns 800 (< 1000) → Alert does NOT trigger (already triggered)
+3. Query returns 1100 (>= 1000) → Condition cleared  
+4. Query returns 950 (< 1000) → Alert triggers again
+
+## Alert Destinations
+
+Destinations determine where notifications are sent when an alert triggers.
+
+### Adding Destinations
+
+1. Configure alert destinations in **Settings** → **Alert Destinations**
+2. Choose a destination type and configure settings
+3. When creating an alert, subscribe to one or more destinations
+
+### Destination Types
+
+Redash supports various notification channels:
+
+#### Email
+
+Send notifications to email addresses:
+
+- Configure SMTP settings in Redash settings
+- Add email addresses as destinations
+- Alerts include query results and a link to the query
+
+#### Slack
+
+Post notifications to Slack channels:
+
+- Set up a Slack webhook URL
+- Configure the destination with the webhook
+- Notifications include query details and results
+
+#### Webhook
+
+Send HTTP POST requests to custom endpoints:
+
+- Specify the webhook URL
+- Alerts post JSON payload with query results
+- Integrate with custom applications or services
+
+#### PagerDuty
+
+Create incidents in PagerDuty:
+
+- Configure PagerDuty API key
+- Alerts trigger incidents
+- Incidents auto-resolve when condition clears (if using rearm)
+
+#### HipChat, Mattermost, and Others
+
+Additional integrations available depending on your Redash configuration.
+
+### Managing Subscriptions
+
+For each alert, you can:
+
+- Subscribe to multiple destinations
+- Remove subscriptions
+- View all current subscriptions
+
+When an alert triggers, notifications are sent to all subscribed destinations simultaneously.
+
+## Alert Status and Evaluation
+
+Alerts are evaluated automatically based on the query schedule:
+
+### Alert States
+
+- **Unknown** - Alert has not been evaluated yet
+- **OK** - Condition is not met (normal state)  
+- **Triggered** - Condition is met (alert firing)
+
+### Evaluation Timing
+
+Alerts are checked:
+
+- When the scheduled query executes
+- When you manually refresh the query
+- When you click "Evaluate" on the alert page
+
+**Important:** If the query is not scheduled, the alert will never automatically evaluate. Always schedule queries that have alerts.
+
+### Manual Evaluation
+
+Test your alert configuration:
+
+1. Open the alert page
+2. Click **Evaluate** button
+3. The alert evaluates immediately using the current query results
+4. View whether it would trigger based on current data
+
+This is useful for testing alert criteria before relying on them.
+
+## Alert Templates
+
+Customize the notification message:
+
+### Default Template
+
+By default, notifications include:
+
+- Alert name
+- Query name and link  
+- Triggering value
+- Condition that was met
+- Query results table
+
+### Custom Templates (Advanced)
+
+Some destination types support custom message templates using the Mustache template syntax:
+
+```
+Alert: {{ ALERT_NAME }}
+Query: {{ QUERY_NAME }}  
+URL: {{ QUERY_URL }}
+
+Current value: {{ ALERT_VALUE }}
+Threshold: {{ ALERT_THRESHOLD }}
+Condition: {{ ALERT_CONDITION }}
+```
+
+Available variables:
+
+- `{{ ALERT_NAME }}` - Name of the alert
+- `{{ ALERT_STATUS }}` - Current alert state
+- `{{ QUERY_NAME }}` - Name of the query
+- `{{ QUERY_URL }}` - Link to the query
+- `{{ ALERT_VALUE }}` - Value that triggered the alert
+- `{{ ALERT_THRESHOLD }}` - Configured threshold
+- `{{ ALERT_CONDITION }}` - Condition operator
+
+## Managing Alerts
+
+### Viewing All Alerts
+
+Access the alerts list:
+
+1. Click **Alerts** in the main navigation
+2. View all alerts you have access to
+3. See alert status and last evaluation time
+
+### Editing Alerts
+
+Modify an existing alert:
+
+1. Open the alert from the alerts list or query page
+2. Update the configuration
+3. Save changes
+
+Only admins and the alert creator can edit alerts.
+
+### Muting Alerts
+
+Temporarily disable an alert:
+
+1. Open the alert
+2. Click **Mute**
+3. The alert will not trigger until unmuted
+
+**Use cases for muting:**
+
+- Planned maintenance windows
+- Known issues being addressed
+- Testing query changes
+
+### Unmuting Alerts
+
+1. Open the muted alert
+2. Click **Unmute**  
+3. The alert will resume normal evaluation
+
+### Deleting Alerts
+
+1. Open the alert
+2. Click **Delete**
+3. Confirm deletion
+
+Deleting an alert removes it permanently and cannot be undone.
+
+## Alert Permissions
+
+Alert access follows query permissions:
+
+- Users must have access to the underlying query
+- Users must have access to the query's data source  
+- Only admins and the creator can edit or delete alerts
+- All users with query access can view alert status
+
+## Best Practices
+
+**Query design:**
+
+- Keep alert queries simple and fast
+- Return only the data needed for the alert condition
+- Test queries thoroughly before creating alerts
+- Use aggregations (COUNT, SUM, AVG) to get single values
+
+**Alert configuration:**
+
+- Use descriptive names that indicate the issue
+- Set appropriate thresholds based on historical data
+- Consider using "After condition cleared" rearm to avoid alert spam
+- Test alerts with manual evaluation before relying on them
+
+**Notification management:**
+
+- Route alerts to appropriate teams or channels
+- Avoid sending all alerts to everyone
+- Use different destinations for different severity levels
+- Document response procedures in alert descriptions
+
+**Monitoring:**
+
+- Regularly review triggered alerts
+- Adjust thresholds as baselines change
+- Delete or mute alerts that are no longer relevant
+- Check that scheduled queries are running successfully
+
+## Common Alert Patterns
+
+### Threshold Alerts
+
+Monitor if a metric crosses a threshold:
+
+```sql
+SELECT COUNT(*) as active_users
+FROM users  
+WHERE last_active_at >= CURRENT_DATE
+```
+
+Alert when `active_users < 1000`
+
+### Percentage Change Alerts
+
+Detect significant changes:
+
+```sql  
+SELECT 
+  (current_value - previous_value) / previous_value * 100 as pct_change
+FROM metrics
+WHERE metric_name = 'daily_revenue'
+```
+
+Alert when `pct_change < -10` (10% decrease)
+
+### Data Freshness Alerts
+
+Ensure data is up-to-date:
+
+```sql
+SELECT 
+  EXTRACT(EPOCH FROM (NOW() - MAX(updated_at)))/3600 as hours_since_update
+FROM data_imports
+```
+
+Alert when `hours_since_update > 24`
+
+### Error Rate Alerts
+
+Monitor error rates:
+
+```sql
+SELECT 
+  SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END)::float / 
+  COUNT(*) * 100 as error_rate_pct
+FROM api_logs
+WHERE created_at >= NOW() - INTERVAL '1 hour'
+```
+
+Alert when `error_rate_pct > 5`
+
+## Troubleshooting
+
+**Alert not triggering:**
+
+- Verify the query is scheduled and running successfully
+- Check that the query returns results
+- Manually evaluate the alert to test the condition
+- Review alert criteria - ensure threshold and condition are correct
+
+**Too many notifications:**
+
+- Use "After condition cleared" rearm setting  
+- Adjust thresholds to reduce false positives
+- Increase query schedule interval
+- Review if the alert is still needed
+
+**Alert triggers incorrectly:**
+
+- Check for null values in the value column
+- Verify data types match (number vs. string)
+- Test the query results manually
+- Ensure the selector (first/min/max) is appropriate
+
+**Notifications not received:**
+
+- Verify destination is configured correctly
+- Check destination credentials (API keys, webhooks)
+- Look for errors in Redash logs
+- Test the destination with a manual evaluation

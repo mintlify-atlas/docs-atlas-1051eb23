@@ -1,0 +1,230 @@
+---
+title: Authentication
+description: Authenticate API requests using API keys
+---
+
+## API Key Authentication
+
+Redash uses API keys for authentication. There are two types of API keys:
+
+1. **User API Keys** - Full access with user permissions
+2. **Query API Keys** - Read-only access to specific query results
+
+## User API Keys
+
+User API keys inherit the permissions of the user account. Use these for making API requests that require full access.
+
+### Getting Your API Key
+
+To obtain your user API key:
+
+1. Log in to Redash
+2. Navigate to your profile settings
+3. Copy your API key
+
+You can also regenerate your API key if needed. This will invalidate the previous key.
+
+### Using Your API Key
+
+Include your API key in the request using one of these methods:
+
+#### Query Parameter
+
+```bash
+curl "https://redash.example.com/api/queries?api_key=YOUR_API_KEY"
+```
+
+#### Authorization Header
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/queries
+```
+
+<Note>
+  The Authorization header method is recommended as it's more secure and doesn't expose the API key in URLs or logs.
+</Note>
+
+## Query API Keys
+
+Query API keys provide read-only access to specific query results. These are useful for:
+
+- Embedding visualizations in public dashboards
+- Sharing query results without full account access
+- Automated data retrieval from specific queries
+
+### Generating Query API Keys
+
+To generate a query API key:
+
+```bash
+POST /api/queries/<query_id>/regenerate_api_key
+```
+
+**Request:**
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_USER_API_KEY" \
+  https://redash.example.com/api/queries/123/regenerate_api_key
+```
+
+**Response:**
+
+```json
+{
+  "id": 123,
+  "api_key": "query_api_key_here",
+  "name": "My Query",
+  "query": "SELECT * FROM users",
+  ...
+}
+```
+
+### Using Query API Keys
+
+Query API keys can only be used to retrieve results for their associated query:
+
+```bash
+curl "https://redash.example.com/api/queries/123/results?api_key=QUERY_API_KEY"
+```
+
+<Warning>
+  Query API keys provide read-only access and cannot execute queries with parameters that contain potentially unsafe values.
+</Warning>
+
+## Dashboard API Keys
+
+Dashboards can be shared publicly using API keys:
+
+### Creating a Public Dashboard
+
+```bash
+POST /api/dashboards/<dashboard_id>/share
+```
+
+**Request:**
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/dashboards/5/share
+```
+
+**Response:**
+
+```json
+{
+  "public_url": "https://redash.example.com/public/dashboards/abc123def456",
+  "api_key": "dashboard_api_key"
+}
+```
+
+### Revoking Public Access
+
+```bash
+DELETE /api/dashboards/<dashboard_id>/share
+```
+
+## API User Detection
+
+The API automatically detects when requests are made using API keys versus authenticated sessions. API users:
+
+- Are identified as `is_api_user() == true`
+- Have restrictions on certain operations (e.g., cannot refresh queries with query API keys)
+- Are tracked separately in event logs with the API key name
+
+## Permissions
+
+API keys inherit permissions from the associated user or resource:
+
+- **Admin users** have full API access
+- **Regular users** are restricted by group permissions and object ownership
+- **Query API keys** only access their specific query results
+- **Dashboard API keys** only access public dashboard data
+
+### Permission Checks
+
+The API enforces permission checks on all endpoints:
+
+| Endpoint Type | Required Permission |
+|--------------|--------------------|
+| Query List/View | `view_query` |
+| Query Create/Edit | `create_query`, `edit_query` |
+| Dashboard List | `list_dashboards` |
+| Dashboard Create | `create_dashboard` |
+| Data Sources | `list_data_sources` (view) or `admin` (modify) |
+| Users | `list_users` (view) or `admin` (modify) |
+| Query Execution | `execute_query` |
+
+## Session Authentication
+
+In addition to API keys, you can use session-based authentication (cookies) when making requests from the same domain. This is primarily used by the Redash web interface.
+
+### Session Endpoint
+
+```bash
+GET /api/session
+```
+
+**Response:**
+
+```json
+{
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "profile_image_url": "https://gravatar.com/...",
+    "groups": [1, 2],
+    "permissions": ["admin", "create_query", "edit_query", ...]
+  },
+  "org_slug": "default",
+  "client_config": {...}
+}
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Protect Your API Keys">
+    - Never commit API keys to version control
+    - Use environment variables to store keys
+    - Rotate keys periodically
+    - Use query-specific keys when possible
+  </Accordion>
+
+  <Accordion title="Use HTTPS">
+    Always use HTTPS for API requests to prevent interception of API keys and sensitive data.
+  </Accordion>
+
+  <Accordion title="Limit Key Scope">
+    - Use query API keys for public/embedded access
+    - Use dashboard API keys for public dashboards
+    - Create separate user accounts with limited permissions for automated systems
+  </Accordion>
+
+  <Accordion title="Monitor API Usage">
+    Review event logs regularly to detect unauthorized access or unusual patterns.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### 401 Unauthorized
+
+- Verify your API key is correct
+- Check if the API key has been regenerated
+- Ensure the API key is properly formatted in the request
+
+### 403 Forbidden
+
+- Verify the user has the required permissions
+- Check if you're using a query API key for operations that require a user key
+- Ensure the user is not disabled
+
+### 404 Not Found
+
+- Verify the endpoint URL is correct
+- Check if the organization slug is required and included
+- Ensure the resource exists and is accessible to your user

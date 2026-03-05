@@ -1,0 +1,510 @@
+---
+title: SQLite
+description: Connect Redash to SQLite database files
+---
+
+## Overview
+
+The SQLite data source allows you to query SQLite database files directly from the Redash server's filesystem. SQLite is a lightweight, file-based database engine that requires no separate server process.
+
+## Connection Setup
+
+### Basic Configuration
+
+To connect to a SQLite database, you only need to provide the file path:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `dbpath` | string | Yes | - | Absolute path to the SQLite database file |
+
+### Connection Examples
+
+**Local database file:**
+```
+dbpath: /var/lib/redash/databases/analytics.db
+```
+
+**User home directory:**
+```
+dbpath: /home/redash/data/mydata.sqlite
+```
+
+**Shared data directory:**
+```
+dbpath: /mnt/shared/databases/reports.db
+```
+
+**Temporary database:**
+```
+dbpath: /tmp/test.db
+```
+
+<Warning>
+The SQLite database file must be accessible by the Redash server process. Ensure the file exists and has proper read permissions (and write permissions if you need to run INSERT/UPDATE/DELETE queries).
+</Warning>
+
+## File Path Requirements
+
+### Permissions
+
+The Redash process must have:
+
+- **Read permission** on the database file for SELECT queries
+- **Write permission** on the database file for INSERT/UPDATE/DELETE queries
+- **Write permission** on the parent directory for certain operations (SQLite creates temporary files)
+
+**Set permissions example:**
+```bash
+# Make file readable by Redash
+chmod 644 /path/to/database.db
+chown redash:redash /path/to/database.db
+
+# Make directory writable
+chmod 755 /path/to
+chown redash:redash /path/to
+```
+
+### File Location
+
+- Use **absolute paths** (not relative paths)
+- Ensure the file **exists** before connecting
+- The path must be accessible from the Redash server (not from your local machine)
+
+<Note>
+For Docker deployments, the database file must be in a mounted volume accessible to the Redash container.
+</Note>
+
+## Query Features
+
+### Schema Discovery
+
+The SQLite data source automatically discovers:
+
+- All tables in the database (from `sqlite_master`)
+- Column names for each table via `PRAGMA table_info()`
+- Excludes SQLite internal tables
+
+### Table Structure
+
+Tables are shown by name without schema qualification:
+```
+users
+orders
+products
+order_items
+```
+
+### Data Type Mapping
+
+SQLite has dynamic typing, but common types are mapped:
+
+| SQLite Type | Redash Type | Notes |
+|------------|-------------|-------|
+| `INTEGER`, `INT`, `TINYINT`, `SMALLINT`, `BIGINT` | String | Dynamic typing |
+| `REAL`, `DOUBLE`, `FLOAT` | String | Dynamic typing |
+| `TEXT`, `VARCHAR`, `CHAR` | String | |
+| `BLOB` | String | Binary data as string |
+| `DATE`, `DATETIME` | String | Stored as text/numeric |
+| `NUMERIC`, `DECIMAL` | String | Dynamic typing |
+| `BOOLEAN` | String | Stored as 0/1 |
+
+<Note>
+SQLite uses dynamic typing, so the actual type of data in a column may vary. All types are mapped to String type in Redash to handle this flexibility.
+</Note>
+
+### SQL Syntax
+
+SQLite supports standard SQL with some differences:
+
+**Limit results:**
+```sql
+SELECT * FROM users
+LIMIT 1000;
+```
+
+**Date functions:**
+```sql
+SELECT DATE('now') AS today;
+SELECT DATETIME('now', 'localtime') AS current_time;
+SELECT strftime('%Y-%m-%d', created_at) AS date FROM orders;
+```
+
+**Common Table Expressions (CTE):**
+```sql
+WITH recent_orders AS (
+  SELECT * FROM orders
+  WHERE created_at > DATE('now', '-30 days')
+)
+SELECT * FROM recent_orders;
+```
+
+**JSON functions (SQLite 3.38+):**
+```sql
+SELECT json_extract(metadata, '$.name') AS name FROM users;
+```
+
+### Query Execution
+
+- **Read-only by default**: Use SELECT queries
+- **Write operations**: INSERT, UPDATE, DELETE are supported if file permissions allow
+- **Transactions**: Each query runs in a transaction
+- **Query cancellation**: Long-running queries can be interrupted
+- **Noop query**: `pragma quick_check` for connection testing
+
+## No SSL/TLS (File-Based)
+
+Since SQLite is file-based and runs in the same process as Redash, there is no network connection and thus no SSL/TLS configuration needed.
+
+**Security considerations:**
+- Protect the database file with filesystem permissions
+- Use encrypted filesystem if data is sensitive
+- Restrict access to the directory containing the database
+
+## No SSH Tunneling
+
+SQLite databases are local files, so SSH tunneling is not applicable. If you need to access a remote SQLite database:
+
+1. **Copy the file** to the Redash server:
+   ```bash
+   scp user@remote:/path/to/database.db /local/path/database.db
+   ```
+
+2. **Mount remote filesystem**:
+   ```bash
+   sshfs user@remote:/path/to /local/mount
+   ```
+
+3. **Sync periodically** with rsync or similar tools
+
+## Configuration Schema Reference
+
+Complete configuration schema from `redash/query_runner/sqlite.py:17-22`:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "dbpath": {"type": "string", "title": "Database Path"}
+    },
+    "required": ["dbpath"]
+}
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+**"unable to open database file"**
+- Verify the file path is correct and absolute
+- Check that the file exists:
+  ```bash
+  ls -l /path/to/database.db
+  ```
+- Ensure Redash process has read permission
+- For Docker, verify the path is inside a mounted volume
+
+**"database is locked"**
+- Another process is writing to the database
+- SQLite only supports one writer at a time
+- Wait for other operations to complete or use WAL mode:
+  ```sql
+  PRAGMA journal_mode=WAL;
+  ```
+
+**"disk I/O error"**
+- Check disk space:
+  ```bash
+  df -h
+  ```
+- Verify filesystem is mounted and accessible
+- Check for filesystem corruption
+
+### Permission Errors
+
+**"attempt to write a readonly database"**
+- File is read-only
+- Redash process doesn't have write permission
+- Directory is not writable (SQLite needs to create temporary files)
+
+**Fix permissions:**
+```bash
+# Make file writable
+chmod 644 /path/to/database.db
+
+# Make directory writable
+chmod 755 /path/to
+
+# Change ownership
+chown redash:redash /path/to/database.db
+```
+
+### Query Errors
+
+**"no such table"**
+- Table name is case-sensitive
+- Verify table exists:
+  ```sql
+  SELECT name FROM sqlite_master WHERE type='table';
+  ```
+
+**"no such column"**
+- Column name is case-sensitive
+- Check column names:
+  ```sql
+  PRAGMA table_info(table_name);
+  ```
+
+**"syntax error"**
+- SQLite doesn't support all SQL features
+- Check SQLite documentation for supported syntax
+- Common limitations:
+  - No RIGHT JOIN or FULL OUTER JOIN
+  - Limited ALTER TABLE support
+  - No stored procedures
+
+### Performance Issues
+
+**Slow queries:**
+- Create indexes on frequently queried columns:
+  ```sql
+  CREATE INDEX idx_users_email ON users(email);
+  ```
+- Analyze database to update statistics:
+  ```sql
+  ANALYZE;
+  ```
+- Consider VACUUM to optimize database:
+  ```sql
+  VACUUM;
+  ```
+
+**Large database files:**
+- SQLite performs well up to several gigabytes
+- For larger datasets, consider PostgreSQL or MySQL
+- Use `PRAGMA page_size` to optimize for your use case
+
+## Best Practices
+
+### 1. Read-Only Access
+
+For Redash, use read-only access when possible:
+
+```bash
+# Set file to read-only
+chmod 444 /path/to/database.db
+```
+
+Or open in read-only mode (requires application-level support):
+```python
+connection = sqlite3.connect('file:/path/to/db?mode=ro', uri=True)
+```
+
+### 2. Use WAL Mode
+
+Write-Ahead Logging (WAL) improves concurrency:
+
+```sql
+PRAGMA journal_mode=WAL;
+```
+
+Benefits:
+- Readers don't block writers
+- Writers don't block readers
+- Better performance for concurrent access
+
+### 3. Regular Backups
+
+SQLite databases are single files, making backups simple:
+
+```bash
+# Simple copy
+cp /path/to/database.db /backup/database_$(date +%Y%m%d).db
+
+# Using SQLite backup
+sqlite3 /path/to/database.db ".backup /backup/database.db"
+```
+
+### 4. Indexing
+
+Create indexes for better query performance:
+
+```sql
+-- Single column index
+CREATE INDEX idx_orders_customer ON orders(customer_id);
+
+-- Multi-column index
+CREATE INDEX idx_orders_customer_date ON orders(customer_id, order_date);
+
+-- Unique index
+CREATE UNIQUE INDEX idx_users_email ON users(email);
+```
+
+### 5. Maintenance
+
+Regular maintenance keeps SQLite databases healthy:
+
+```sql
+-- Update statistics
+ANALYZE;
+
+-- Reclaim space and defragment
+VACUUM;
+
+-- Check integrity
+PRAGMA integrity_check;
+```
+
+## Use Cases
+
+### Good Use Cases for SQLite with Redash
+
+1. **Embedded analytics**: Applications that generate SQLite reports
+2. **Log analysis**: SQLite files generated by applications
+3. **Data exports**: CSV-to-SQLite conversions for quick analysis
+4. **Development and testing**: Local database for development
+5. **Small datasets**: Up to a few GB of data
+6. **Archived data**: Historical snapshots as SQLite files
+
+### When to Use a Different Database
+
+- **High concurrency**: Multiple simultaneous writers
+- **Large datasets**: Multi-gigabyte or terabyte databases
+- **Remote access**: Database on different server
+- **Advanced features**: Replication, clustering, stored procedures
+- **Production systems**: Enterprise applications with high availability needs
+
+For these scenarios, consider:
+- **PostgreSQL**: Full-featured, excellent performance
+- **MySQL**: Popular, well-supported
+- **Cloud databases**: Managed services (RDS, Cloud SQL)
+
+## Docker Configuration
+
+When running Redash in Docker, mount the database file:
+
+**docker-compose.yml:**
+```yaml
+services:
+  redash:
+    image: redash/redash:latest
+    volumes:
+      - ./data:/data
+      - ./databases:/databases:ro  # Read-only mount
+    environment:
+      REDASH_DATABASE_URL: postgresql://postgres
+```
+
+Then use path:
+```
+dbpath: /databases/analytics.db
+```
+
+## Performance Optimization
+
+### Query Performance
+
+**Use EXPLAIN QUERY PLAN** to analyze queries:
+```sql
+EXPLAIN QUERY PLAN
+SELECT * FROM orders WHERE customer_id = 12345;
+```
+
+**Create indexes** for filters and joins:
+```sql
+CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date);
+```
+
+**Limit result sets:**
+```sql
+SELECT * FROM large_table
+LIMIT 1000;
+```
+
+### Database Optimization
+
+**Optimize page size** (before creating database):
+```sql
+PRAGMA page_size = 4096;  -- Default is usually good
+VACUUM;  -- Apply page size change
+```
+
+**Enable memory-mapped I/O:**
+```sql
+PRAGMA mmap_size = 268435456;  -- 256 MB
+```
+
+**Increase cache size:**
+```sql
+PRAGMA cache_size = -64000;  -- 64 MB (negative value = KB)
+```
+
+## Advanced Features
+
+### Full-Text Search
+
+SQLite supports FTS5 for full-text search:
+
+```sql
+-- Create FTS table
+CREATE VIRTUAL TABLE documents_fts USING fts5(title, content);
+
+-- Insert data
+INSERT INTO documents_fts SELECT title, content FROM documents;
+
+-- Search
+SELECT * FROM documents_fts WHERE documents_fts MATCH 'search query';
+```
+
+### JSON Support
+
+SQLite 3.38+ includes JSON functions:
+
+```sql
+-- Extract JSON field
+SELECT json_extract(data, '$.name') AS name FROM users;
+
+-- JSON array aggregation
+SELECT json_group_array(name) FROM users;
+
+-- JSON object
+SELECT json_object('id', id, 'name', name) FROM users;
+```
+
+### Common Table Expressions
+
+Use CTEs for complex queries:
+
+```sql
+WITH monthly_sales AS (
+  SELECT 
+    strftime('%Y-%m', order_date) AS month,
+    SUM(total) AS sales
+  FROM orders
+  GROUP BY month
+),
+moving_avg AS (
+  SELECT
+    month,
+    sales,
+    AVG(sales) OVER (
+      ORDER BY month
+      ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+    ) AS avg_3_months
+  FROM monthly_sales
+)
+SELECT * FROM moving_avg;
+```
+
+## Related Data Sources
+
+- **PostgreSQL**: For production workloads and larger datasets
+- **MySQL**: Alternative full-featured SQL database
+- **CSV**: For simpler tabular data (can be imported to SQLite)
+
+## Additional Resources
+
+- [SQLite Documentation](https://www.sqlite.org/docs.html)
+- [SQLite CLI Tools](https://www.sqlite.org/cli.html)
+- [Performance Tuning](https://www.sqlite.org/speed.html)
+- [SQL Syntax](https://www.sqlite.org/lang.html)

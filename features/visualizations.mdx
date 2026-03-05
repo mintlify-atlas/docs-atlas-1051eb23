@@ -1,0 +1,351 @@
+---
+title: Visualizations
+description: Create charts and visualizations from your query results
+---
+
+Visualizations transform your query results into charts, graphs, and other visual representations that make data easier to understand.
+
+## Creating a Visualization
+
+After executing a query with results:
+
+1. Click **+ New Visualization** below the results table
+2. Choose a visualization type
+3. Configure the visualization options
+4. Give your visualization a name
+5. Click **Save**
+
+Every query can have multiple visualizations showing different views of the same data.
+
+## Visualization Types
+
+Redash supports multiple visualization types:
+
+### Table
+
+The default table view displays query results in a grid format.
+
+**Configuration options:**
+- Column formatting
+- Column reordering
+- Conditional formatting
+- Cell display templates
+
+**Use cases:**
+- Displaying detailed data records
+- Lists with multiple attributes
+- Data that doesn't fit well in charts
+
+### Chart
+
+Line, bar, area, pie, and scatter charts for visualizing trends and comparisons.
+
+**Configuration options:**
+- **X Column** - Horizontal axis (typically date or category)
+- **Y Columns** - One or more metrics to plot
+- **Group By** - Create separate series
+- **Stacking** - Stack bars or areas
+- **Legend** - Position and visibility
+- **Axes** - Labels, scale, min/max values
+
+**Chart sub-types:**
+- **Line** - Show trends over time
+- **Bar** - Compare values across categories  
+- **Area** - Show cumulative values
+- **Pie** - Show proportions of a whole
+- **Scatter** - Show correlation between variables
+
+### Counter
+
+Display a single numeric value prominently.
+
+**Configuration options:**
+- **Counter value column** - Which column contains the number
+- **Counter label** - Text to display below the number
+- **Target value** - Optional comparison value
+- **Formatting** - Decimal places, thousands separator
+
+**Use cases:**
+- KPIs and metrics
+- Summary statistics
+- Current status values
+
+### Box Plot
+
+Visualize distributions and outliers in your data.
+
+**Configuration options:**
+- Value column
+- Grouping column
+
+**Use cases:**
+- Showing data distribution
+- Identifying outliers
+- Comparing distributions across groups
+
+### Cohort
+
+Analyze user retention and behavior over time.
+
+**Required columns:**
+- Date (cohort period)
+- Period (time offset from cohort)
+- Value (metric being tracked)
+
+**Configuration options:**
+- Time interval (daily, weekly, monthly)
+- Value display (absolute or percentage)
+
+**Use cases:**
+- User retention analysis
+- Customer lifecycle tracking
+- Feature adoption over time
+
+### Funnel
+
+Visualize conversion rates through a multi-step process.
+
+**Required columns:**
+- Step name
+- Step value (count or percentage)
+
+**Configuration options:**
+- Step order
+- Value formatting
+
+**Use cases:**
+- Conversion funnels
+- Multi-step workflows
+- Drop-off analysis
+
+### Map
+
+Display geographic data on interactive maps.
+
+**Map types:**
+- **Markers** - Point locations
+- **Choropleth** - Color-coded regions
+- **Heatmap** - Density visualization
+
+**Configuration options:**
+- Latitude/longitude columns
+- Classification column (for grouping)
+- Map style and zoom level
+- Popup templates
+
+**Use cases:**
+- Store/office locations
+- Regional sales data
+- Geographic distributions
+
+### Pivot Table
+
+Create cross-tabulated data summaries.
+
+**Configuration options:**
+- Row fields
+- Column fields
+- Value aggregation (sum, average, count)
+
+**Use cases:**
+- Multi-dimensional analysis
+- Cross-tabulated reports
+- Aggregated summaries
+
+### Sankey
+
+Visualize flow and connections between nodes.
+
+**Required columns:**
+- Source node
+- Target node  
+- Value (flow amount)
+
+**Use cases:**
+- User journey flows
+- Resource allocation
+- Network traffic
+
+### Sunburst
+
+Show hierarchical data as nested circles.
+
+**Required columns:**
+- Hierarchy levels (multiple columns)
+- Value column
+
+**Use cases:**
+- Hierarchical breakdowns
+- Nested categories
+- Drill-down analysis
+
+### Word Cloud
+
+Visualize text frequency and importance.
+
+**Required columns:**
+- Word/phrase
+- Frequency/weight
+
+**Use cases:**
+- Tag clouds
+- Keyword analysis  
+- Text mining results
+
+## Visualization Editor
+
+The visualization editor provides a split view:
+
+- **Left panel** - Configuration options specific to the visualization type
+- **Right panel** - Live preview of the visualization
+
+Changes to options update the preview in real-time, allowing you to experiment with different configurations.
+
+### Common Options
+
+Most visualizations share these common settings:
+
+**General:**
+- Visualization name
+- Description
+
+**Appearance:**
+- Colors and themes
+- Legend position
+- Grid lines
+
+**Data:**
+- Column mapping
+- Sorting
+- Filtering
+
+### Chart-Specific Options
+
+**Axis Configuration:**
+- Axis type (linear, logarithmic, datetime, category)
+- Axis labels and titles
+- Min/max values
+- Tick interval
+
+**Series Configuration:**
+- Series name
+- Y-axis assignment (left/right)
+- Chart type (line, bar, area)
+- Color
+
+**Legend:**
+- Position (top, bottom, left, right)
+- Visibility
+- Item click behavior
+
+## Customization
+
+### Colors
+
+Customize visualization colors:
+
+1. In the visualization editor, find the color picker for your series
+2. Click to choose a custom color
+3. Colors can be set per-series for multi-series charts
+
+### Formatting
+
+Format numeric values:
+
+- **Decimal places** - Control precision
+- **Thousands separator** - Add commas
+- **Prefix/suffix** - Add currency symbols or units
+- **Date format** - Customize date display
+
+### Conditional Formatting (Tables)
+
+Highlight table cells based on values:
+
+1. In table visualization settings, configure column formatting
+2. Set conditions (greater than, less than, equals, contains)
+3. Choose background or text color
+4. Add multiple rules with priority ordering
+
+## Using Visualizations
+
+### Embedding in Dashboards
+
+Add visualizations to dashboards:
+
+1. Create a dashboard
+2. Click **Add Widget**
+3. Search for your query
+4. Select the visualization to display
+5. Resize and position the widget
+
+See [Dashboards](/features/dashboards) for more details.
+
+### Sharing Visualizations
+
+Share individual visualizations:
+
+1. Open the query
+2. Select the visualization tab
+3. Click the share icon to get an embed code or public URL
+4. Configure permissions for access
+
+### Downloading Visualizations
+
+Download visualizations as images:
+
+1. View the visualization
+2. Click the download icon
+3. Save as PNG image
+
+Note: Not all visualization types support image export.
+
+## Filters
+
+Visualizations can be filtered without re-executing the query:
+
+1. Click the **Filters** button above the visualization
+2. Set filter conditions on result columns
+3. The visualization updates to show only matching rows
+
+Filters work on the cached query results and don't require re-running the query.
+
+## Best Practices
+
+**Choose the right visualization type:**
+- Use line charts for trends over time
+- Use bar charts for categorical comparisons
+- Use pie charts only when showing parts of a whole (and limit to 5-7 slices)
+- Use tables when exact values matter more than visual patterns
+
+**Keep it simple:**
+- Don't plot more than 5-7 series on one chart
+- Use clear, descriptive labels
+- Remove unnecessary grid lines and decorations
+- Choose colors that are distinguishable and accessible
+
+**Optimize for dashboards:**
+- Design visualizations to work at the size they'll be displayed
+- Use consistent color schemes across related visualizations  
+- Include context in titles so visualizations are self-explanatory
+
+**Performance:**
+- Limit result sets to what you need to visualize
+- Use query-level filtering instead of visualization filtering for large datasets
+- Consider aggregating data in the query rather than in the visualization
+
+## Troubleshooting
+
+**Visualization not displaying:**
+- Check that your query has returned results
+- Verify required columns are present for the visualization type
+- Check browser console for JavaScript errors
+
+**Chart appears empty:**
+- Ensure X and Y columns are correctly mapped
+- Check for null values in key columns
+- Verify data types match expectations (numbers for Y-axis)
+
+**Performance issues:**
+- Reduce the number of rows returned by your query
+- Simplify complex visualizations
+- Aggregate data in SQL rather than plotting individual points

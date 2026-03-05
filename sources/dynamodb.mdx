@@ -1,0 +1,295 @@
+---
+title: DynamoDB
+description: Query Amazon DynamoDB tables using Athena or alternative methods
+---
+
+## Overview
+
+Amazon DynamoDB is a fully managed NoSQL database service provided by AWS. While Redash does not have a native DynamoDB query runner in the current codebase, you can still query DynamoDB data through alternative approaches.
+
+## Connection Options
+
+### Option 1: Amazon Athena (Recommended)
+
+The recommended approach is to use Amazon Athena with DynamoDB as a data source. Athena can query DynamoDB tables using SQL.
+
+#### Setup Steps
+
+1. **Configure DynamoDB Connector in Athena**
+   - Set up the Athena DynamoDB connector in your AWS account
+   - Create a Glue Data Catalog for your DynamoDB tables
+
+2. **Connect Redash to Athena**
+   - Use Redash's Athena data source
+   - Configure with your AWS credentials and region
+
+3. **Query DynamoDB via Athena**
+
+```sql
+SELECT 
+  user_id,
+  username,
+  email,
+  created_at
+FROM "lambda:dynamodb"."default".users
+WHERE status = 'active'
+LIMIT 100;
+```
+
+### Option 2: Export to S3 + Athena
+
+Export DynamoDB tables to S3 and query them using Athena:
+
+1. **Enable DynamoDB export to S3**
+   - Use DynamoDB's export feature to export tables to S3
+   - Configure regular exports for updated data
+
+2. **Create Athena tables over S3 data**
+
+```sql
+CREATE EXTERNAL TABLE dynamodb_users (
+  user_id string,
+  username string,
+  email string,
+  created_at bigint,
+  status string
+)
+STORED AS PARQUET
+LOCATION 's3://my-bucket/dynamodb-exports/users/';
+```
+
+3. **Query the exported data**
+
+```sql
+SELECT 
+  user_id,
+  username,
+  from_unixtime(created_at) as created_date
+FROM dynamodb_users
+WHERE status = 'active'
+ORDER BY created_at DESC
+LIMIT 100;
+```
+
+### Option 3: DynamoDB Streams + Data Pipeline
+
+Set up a real-time data pipeline:
+
+1. **Enable DynamoDB Streams**
+2. **Stream to a queryable data store** (e.g., PostgreSQL, MySQL, Elasticsearch)
+3. **Connect Redash to the target data store**
+
+This approach provides real-time data availability for querying.
+
+### Option 4: AWS Lambda + API Gateway
+
+Create a custom API for DynamoDB queries:
+
+1. **Create Lambda functions** to query DynamoDB
+2. **Expose via API Gateway**
+3. **Use Redash's JSON data source** to query the API
+
+Example Lambda function (Python):
+
+```python
+import boto3
+import json
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('users')
+
+def lambda_handler(event, context):
+    response = table.scan(
+        FilterExpression='#status = :status',
+        ExpressionAttributeNames={'#status': 'status'},
+        ExpressionAttributeValues={':status': 'active'},
+        Limit=100
+    )
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps(response['Items'])
+    }
+```
+
+## DynamoDB Query Patterns
+
+While not directly supported in Redash, understanding DynamoDB query patterns is essential:
+
+### GetItem (Key-based lookup)
+
+```python
+# Example: This would be in a Lambda function
+response = table.get_item(
+    Key={
+        'user_id': '12345'
+    }
+)
+item = response['Item']
+```
+
+### Query (Partition key + optional sort key)
+
+```python
+response = table.query(
+    KeyConditionExpression=Key('user_id').eq('12345') & 
+                          Key('timestamp').between(start_time, end_time)
+)
+items = response['Items']
+```
+
+### Scan (Full table scan with filter)
+
+```python
+response = table.scan(
+    FilterExpression=Attr('status').eq('active') & Attr('age').gte(18)
+)
+items = response['Items']
+```
+
+**Note**: Scans are expensive and should be avoided on large tables.
+
+## Using Athena for DynamoDB Queries
+
+Once connected via Athena, you can use SQL syntax:
+
+### Basic SELECT
+
+```sql
+SELECT *
+FROM "lambda:dynamodb"."default".orders
+WHERE order_date >= DATE '2024-01-01'
+LIMIT 100;
+```
+
+### Aggregations
+
+```sql
+SELECT 
+  customer_id,
+  COUNT(*) as order_count,
+  SUM(total_amount) as total_spent,
+  AVG(total_amount) as avg_order_value
+FROM "lambda:dynamodb"."default".orders
+WHERE order_status = 'completed'
+GROUP BY customer_id
+ORDER BY total_spent DESC
+LIMIT 50;
+```
+
+### Date Range Queries
+
+```sql
+SELECT 
+  DATE_TRUNC('day', from_unixtime(timestamp)) as order_date,
+  COUNT(*) as daily_orders,
+  SUM(total_amount) as daily_revenue
+FROM "lambda:dynamodb"."default".orders
+WHERE from_unixtime(timestamp) >= CURRENT_DATE - INTERVAL '30' DAY
+GROUP BY DATE_TRUNC('day', from_unixtime(timestamp))
+ORDER BY order_date DESC;
+```
+
+### JOIN Operations
+
+```sql
+SELECT 
+  o.order_id,
+  o.total_amount,
+  u.username,
+  u.email
+FROM "lambda:dynamodb"."default".orders o
+JOIN "lambda:dynamodb"."default".users u
+  ON o.user_id = u.user_id
+WHERE o.order_status = 'completed'
+LIMIT 100;
+```
+
+## Working with DynamoDB Data Types
+
+DynamoDB has specific data types that need to be handled:
+
+- **String (S)**: Text data
+- **Number (N)**: Numeric values (stored as strings in DynamoDB)
+- **Binary (B)**: Binary data
+- **Boolean (BOOL)**: True/false values
+- **Null (NULL)**: Null values
+- **List (L)**: Ordered collection of values
+- **Map (M)**: Unordered collection of key-value pairs
+- **String Set (SS)**: Set of strings
+- **Number Set (NS)**: Set of numbers
+- **Binary Set (BS)**: Set of binary values
+
+When querying via Athena, these are automatically converted to SQL-compatible types.
+
+## Performance Considerations
+
+### DynamoDB Best Practices
+
+1. **Use partition keys effectively**: Design tables with well-distributed partition keys
+2. **Leverage sort keys**: Use sort keys for efficient range queries
+3. **Avoid scans**: Use queries with partition keys when possible
+4. **Enable caching**: Use DynamoDB DAX for frequently accessed data
+5. **Monitor capacity**: Watch read/write capacity units and adjust as needed
+6. **Use secondary indexes**: Create GSI/LSI for alternative query patterns
+
+### Athena Query Optimization
+
+1. **Partition data in S3**: If using S3 exports, partition by date or other keys
+2. **Use columnar formats**: Store exports in Parquet or ORC format
+3. **Filter early**: Apply WHERE clauses to reduce data scanned
+4. **Limit result sets**: Always use LIMIT to control result size
+5. **Use CTAS**: Create optimized tables from query results for repeated use
+
+## Cost Considerations
+
+- **DynamoDB read costs**: Queries and scans consume read capacity units
+- **Athena costs**: Charged per TB of data scanned
+- **S3 storage costs**: For exports and intermediate data
+- **Data transfer costs**: Between AWS services and regions
+
+**Recommendation**: Use DynamoDB exports to S3 + Athena queries for cost-effective analytics.
+
+## Alternative: Custom Query Runner
+
+If you need native DynamoDB support in Redash, you can develop a custom query runner:
+
+1. **Create a Python module** extending `BaseQueryRunner`
+2. **Implement DynamoDB query logic** using boto3
+3. **Install as a Redash plugin**
+
+Example structure:
+
+```python
+from redash.query_runner import BaseQueryRunner, register
+import boto3
+
+class DynamoDB(BaseQueryRunner):
+    @classmethod
+    def configuration_schema(cls):
+        return {
+            "type": "object",
+            "properties": {
+                "region": {"type": "string"},
+                "access_key": {"type": "string"},
+                "secret_key": {"type": "string"}
+            }
+        }
+    
+    def run_query(self, query, user):
+        # Implement DynamoDB query logic
+        pass
+
+register(DynamoDB)
+```
+
+## Summary
+
+While Redash doesn't have native DynamoDB support in this codebase, the recommended approaches are:
+
+1. **Best for SQL users**: Amazon Athena with DynamoDB connector
+2. **Best for analytics**: Export to S3 + Athena
+3. **Best for real-time**: DynamoDB Streams to a queryable database
+4. **Best for custom logic**: Lambda + API Gateway
+
+Choose the approach that best fits your use case, data volume, query patterns, and cost requirements.

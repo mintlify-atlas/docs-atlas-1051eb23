@@ -1,0 +1,353 @@
+---
+title: MongoDB
+description: Connect to MongoDB databases and run queries using MongoDB query syntax
+---
+
+## Overview
+
+The MongoDB data source allows you to connect to MongoDB databases and execute queries using MongoDB's native query language. It supports both standalone and replica set configurations.
+
+## Connection Setup
+
+To connect to MongoDB, you need to configure the following parameters:
+
+### Required Fields
+
+- **Connection String**: MongoDB connection URI (e.g., `mongodb://localhost:27017`)
+- **Database Name**: The name of the database to connect to
+
+### Optional Fields
+
+- **Username**: Authentication username
+- **Password**: Authentication password (stored securely)
+- **Replica Set Name**: Name of the replica set (if using replica sets)
+- **Replica Set Read Preference**: Controls how reads are distributed across replica set members
+  - Primary Preferred (default)
+  - Primary
+  - Secondary
+  - Secondary Preferred
+  - Nearest
+- **Flatten Results**: Whether to flatten nested documents in query results
+  - False (default)
+  - True
+
+### Configuration Schema
+
+```json
+{
+  "connectionString": "mongodb://localhost:27017",
+  "dbName": "myDatabase",
+  "username": "user",
+  "password": "password",
+  "replicaSetName": "rs0",
+  "readPreference": "primaryPreferred",
+  "flatten": "False"
+}
+```
+
+## Query Syntax
+
+MongoDB queries in Redash use JSON format with the following structure:
+
+### Basic Find Query
+
+```json
+{
+  "collection": "users",
+  "query": {
+    "age": {"$gte": 18}
+  },
+  "fields": {
+    "_id": 1,
+    "name": 1,
+    "email": 1,
+    "age": 1
+  },
+  "sort": [
+    {"name": "age", "direction": -1}
+  ],
+  "limit": 100,
+  "skip": 0
+}
+```
+
+### Count Documents
+
+```json
+{
+  "collection": "users",
+  "query": {
+    "status": "active"
+  },
+  "count": true,
+  "limit": 1000
+}
+```
+
+### With Projection and Sorting
+
+```json
+{
+  "collection": "orders",
+  "query": {
+    "status": "completed",
+    "total": {"$gte": 100}
+  },
+  "fields": {
+    "orderId": 1,
+    "customer": 1,
+    "total": 1,
+    "createdAt": 1
+  },
+  "sort": [
+    {"name": "createdAt", "direction": -1}
+  ],
+  "limit": 50
+}
+```
+
+### Using Date Helpers
+
+Redash provides special helpers for working with dates:
+
+```json
+{
+  "collection": "events",
+  "query": {
+    "timestamp": {
+      "$gte": ISODate("2024-01-01T00:00:00Z"),
+      "$lt": ISODate("2024-12-31T23:59:59Z")
+    }
+  }
+}
+```
+
+Or use the `$humanTime` helper:
+
+```json
+{
+  "collection": "logs",
+  "query": {
+    "createdAt": {
+      "$gte": {"$humanTime": "7 days ago"}
+    }
+  }
+}
+```
+
+### Working with ObjectIds
+
+```json
+{
+  "collection": "products",
+  "query": {
+    "_id": {"$in": {"$oids": [
+      "507f1f77bcf86cd799439011",
+      "507f1f77bcf86cd799439012"
+    ]}}
+  }
+}
+```
+
+## Aggregations
+
+MongoDB's aggregation framework allows for complex data processing pipelines:
+
+### Basic Aggregation
+
+```json
+{
+  "collection": "orders",
+  "aggregate": [
+    {
+      "$match": {
+        "status": "completed"
+      }
+    },
+    {
+      "$group": {
+        "_id": "$customerId",
+        "totalSpent": {"$sum": "$total"},
+        "orderCount": {"$sum": 1}
+      }
+    },
+    {
+      "$sort": [
+        {"name": "totalSpent", "direction": -1}
+      ]
+    },
+    {
+      "$limit": 10
+    }
+  ]
+}
+```
+
+### Group by Date
+
+```json
+{
+  "collection": "sales",
+  "aggregate": [
+    {
+      "$match": {
+        "date": {"$gte": ISODate("2024-01-01T00:00:00Z")}
+      }
+    },
+    {
+      "$group": {
+        "_id": {
+          "$dateToString": {
+            "format": "%Y-%m-%d",
+            "date": "$date"
+          }
+        },
+        "totalRevenue": {"$sum": "$amount"},
+        "transactionCount": {"$sum": 1}
+      }
+    },
+    {
+      "$sort": [
+        {"name": "_id", "direction": 1}
+      ]
+    }
+  ]
+}
+```
+
+### Advanced Pipeline with Multiple Stages
+
+```json
+{
+  "collection": "products",
+  "aggregate": [
+    {
+      "$match": {
+        "category": "electronics"
+      }
+    },
+    {
+      "$lookup": {
+        "from": "reviews",
+        "localField": "_id",
+        "foreignField": "productId",
+        "as": "reviews"
+      }
+    },
+    {
+      "$project": {
+        "name": 1,
+        "price": 1,
+        "averageRating": {"$avg": "$reviews.rating"},
+        "reviewCount": {"$size": "$reviews"}
+      }
+    },
+    {
+      "$match": {
+        "reviewCount": {"$gte": 5}
+      }
+    },
+    {
+      "$sort": [
+        {"name": "averageRating", "direction": -1}
+      ]
+    }
+  ],
+  "allowDiskUse": true
+}
+```
+
+### Aggregation with Unwinding Arrays
+
+```json
+{
+  "collection": "orders",
+  "aggregate": [
+    {
+      "$unwind": "$items"
+    },
+    {
+      "$group": {
+        "_id": "$items.productId",
+        "totalQuantity": {"$sum": "$items.quantity"},
+        "totalRevenue": {"$sum": {"$multiply": ["$items.quantity", "$items.price"]}}
+      }
+    },
+    {
+      "$sort": [
+        {"name": "totalRevenue", "direction": -1}
+      ]
+    },
+    {
+      "$limit": 20
+    }
+  ]
+}
+```
+
+## Additional Options
+
+### Sorting Columns
+
+You can sort the output columns alphabetically:
+
+```json
+{
+  "collection": "users",
+  "query": {},
+  "sortColumns": "asc"
+}
+```
+
+Use `"desc"` for descending order.
+
+### Allow Disk Use
+
+For large aggregation pipelines that may exceed memory limits:
+
+```json
+{
+  "collection": "large_dataset",
+  "aggregate": [
+    // ... pipeline stages
+  ],
+  "allowDiskUse": true
+}
+```
+
+## Result Flattening
+
+When the **Flatten Results** option is enabled in the data source configuration, nested documents are automatically flattened:
+
+**Original document:**
+```json
+{
+  "_id": "123",
+  "user": {
+    "name": "John Doe",
+    "address": {
+      "city": "New York",
+      "country": "USA"
+    }
+  }
+}
+```
+
+**Flattened result:**
+```json
+{
+  "_id": "123",
+  "user.name": "John Doe",
+  "user.address.city": "New York",
+  "user.address.country": "USA"
+}
+```
+
+## Best Practices
+
+1. **Use indexes**: Ensure your queries use indexed fields for better performance
+2. **Limit results**: Always use `limit` to avoid retrieving too much data
+3. **Project only needed fields**: Use the `fields` parameter to reduce data transfer
+4. **Use aggregation pipelines**: For complex queries, use aggregation pipelines instead of client-side processing
+5. **Test with small datasets**: Test your queries on limited data before running on production
+6. **Monitor query performance**: Use MongoDB's profiler to identify slow queries

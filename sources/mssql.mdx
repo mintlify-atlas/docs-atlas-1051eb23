@@ -1,0 +1,333 @@
+---
+title: Microsoft SQL Server
+description: Connect Redash to Microsoft SQL Server and Azure SQL databases
+---
+
+## Overview
+
+The Microsoft SQL Server data source enables connections to SQL Server databases using the FreeTDS library and pymssql driver. It supports SQL Server 2000 and later versions, including Azure SQL Database.
+
+## Connection Setup
+
+### Basic Configuration
+
+To connect to a SQL Server database, provide the following configuration:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `db` | string | Yes | - | Database name to connect to |
+| `server` | string | No | `127.0.0.1` | Database server hostname or IP address |
+| `port` | number | No | `1433` | Database server port |
+| `user` | string | No | - | Username for authentication |
+| `password` | string | No | - | Password for authentication |
+| `tds_version` | string | No | `7.0` | TDS protocol version |
+| `charset` | string | No | `UTF-8` | Character set for connection |
+
+### Connection String Examples
+
+**Local database:**
+```
+server: 127.0.0.1
+port: 1433
+user: sa
+password: YourStrong!Password
+db: AdventureWorks
+```
+
+**Remote SQL Server:**
+```
+server: sql.example.com
+port: 1433
+user: redash_user
+password: secure_password
+db: Analytics
+tds_version: 7.0
+charset: UTF-8
+```
+
+**Azure SQL Database:**
+```
+server: myserver.database.windows.net
+port: 1433
+user: redash@myserver
+password: azure_password
+db: production
+tds_version: 7.0
+```
+
+**Named instance:**
+```
+server: SERVERNAME\INSTANCENAME
+port: 1433
+user: app_user
+password: password
+db: AppDatabase
+```
+
+<Note>
+For non-standard ports, the port number is automatically appended to the server name in the format `server:port`.
+</Note>
+
+## TDS Protocol Versions
+
+The TDS (Tabular Data Stream) protocol version determines compatibility with different SQL Server versions:
+
+| TDS Version | SQL Server Version | Notes |
+|-------------|-------------------|-------|
+| `4.2` | SQL Server 6.5 | Legacy |
+| `5.0` | SQL Server 7.0 | Legacy |
+| `7.0` | SQL Server 2000+ | Default, recommended |
+| `7.1` | SQL Server 2005+ | Enhanced features |
+| `7.2` | SQL Server 2008+ | Additional data types |
+| `7.3` | SQL Server 2012+ | Modern features |
+| `7.4` | SQL Server 2016+ | Latest features |
+
+**Default**: `7.0` provides good compatibility with most SQL Server versions.
+
+<Tip>
+If you encounter compatibility issues or need specific features, try adjusting the `tds_version` to match your SQL Server version.
+</Tip>
+
+## Character Set Configuration
+
+The `charset` parameter controls character encoding for the connection:
+
+- **UTF-8** (default): Recommended for international character support
+- **ISO-8859-1**: Western European characters
+- **CP1252**: Windows Latin-1
+
+Queries are encoded in the specified charset before execution, ensuring proper handling of special characters.
+
+## Query Features
+
+### Schema Discovery
+
+The SQL Server data source automatically discovers:
+
+- All user tables from all schemas
+- Column names from each table
+- Excludes system schemas and roles:
+  - `guest`, `INFORMATION_SCHEMA`, `sys`
+  - Database roles: `db_owner`, `db_accessadmin`, `db_securityadmin`, `db_ddladmin`
+  - `db_backupoperator`, `db_datareader`, `db_datawriter`
+  - `db_denydatareader`, `db_denydatawriter`
+
+### Schema Qualification
+
+Tables from the configured database appear without schema prefix:
+```
+users
+orders
+products
+```
+
+Tables from other schemas or databases include the schema name:
+```
+dbo.customers
+warehouse.inventory
+```
+
+### Data Type Mapping
+
+SQL Server types are mapped to Redash types:
+
+| SQL Server Type | Redash Type | Notes |
+|----------------|-------------|-------|
+| `varchar`, `nvarchar`, `char`, `nchar`, `text` | String | Type code 1, 2 |
+| `int`, `bigint`, `smallint`, `tinyint` | Float | Type code 3 (safe for decimals) |
+| `datetime`, `datetime2`, `smalldatetime` | DateTime | Type code 4 |
+| `float`, `real`, `decimal`, `numeric` | Float | Type code 5 |
+
+<Note>
+Type code 3 is mapped to Float instead of Integer to safely handle decimal values that sometimes appear with this type code.
+</Note>
+
+### Query Limitations
+
+**TOP Clause**: SQL Server uses `TOP` for limiting results instead of `LIMIT`:
+
+```sql
+-- Redash adds TOP automatically when using limit feature
+SELECT TOP 1000 * FROM users
+```
+
+**Limit Keywords**: The following keywords indicate a limit is already applied:
+- `TOP`
+
+Limit is inserted after `SELECT` keyword (not at end of query like PostgreSQL/MySQL).
+
+### Query Execution
+
+- **Multi-statement support**: Multiple statements can be executed
+- **Result sets**: Only the final result set is returned
+- **Query cancellation**: Long-running queries can be cancelled
+- **No query annotation**: Comments are not automatically added to queries
+
+## SSL/TLS Configuration
+
+SSL/TLS configuration for SQL Server depends on your FreeTDS installation and SQL Server setup.
+
+### Enabling Encrypted Connections
+
+**Via FreeTDS configuration** (`freetds.conf`):
+```ini
+[global]
+encryption = required
+```
+
+**Azure SQL Database**: Encryption is enforced by default.
+
+<Note>
+Unlike PostgreSQL and MySQL, the SQL Server data source doesn't expose SSL certificate configuration in the UI. SSL must be configured at the FreeTDS or system level.
+</Note>
+
+## Configuration Schema Reference
+
+Complete configuration schema from `redash/query_runner/mssql.py:42-64`:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "user": {"type": "string"},
+        "password": {"type": "string"},
+        "server": {"type": "string", "default": "127.0.0.1"},
+        "port": {"type": "number", "default": 1433},
+        "tds_version": {
+            "type": "string",
+            "default": "7.0",
+            "title": "TDS Version"
+        },
+        "charset": {
+            "type": "string",
+            "default": "UTF-8",
+            "title": "Character Set"
+        },
+        "db": {"type": "string", "title": "Database Name"}
+    },
+    "required": ["db"]
+}
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+**"Unable to connect"**
+- Verify server hostname and port are correct
+- Ensure SQL Server is accepting TCP/IP connections:
+  - Open SQL Server Configuration Manager
+  - Enable TCP/IP protocol
+  - Restart SQL Server service
+- Check firewall rules allow port 1433
+
+**"Login failed for user"**
+- Verify username and password are correct
+- For Azure SQL: ensure username includes `@servername` suffix
+- Check that SQL Server authentication is enabled (not just Windows auth)
+- Verify user has access to the specified database:
+  ```sql
+  USE [database];
+  CREATE USER [redash_user] FOR LOGIN [redash_user];
+  GRANT SELECT TO [redash_user];
+  ```
+
+**"Cannot open database requested by the login"**
+- Database name is case-sensitive in some SQL Server configurations
+- Ensure the database exists and user has access
+- Check default database for the user
+
+### TDS Protocol Issues
+
+**"Invalid TDS version"**
+- Try different TDS versions (7.0, 7.1, 7.2, 7.3)
+- Older SQL Server versions may require TDS 4.2 or 5.0
+- Newer versions work best with TDS 7.3+
+
+**"Protocol error"**
+- Update FreeTDS to the latest version
+- Check SQL Server version compatibility
+- Review FreeTDS logs for detailed errors
+
+### Query Errors
+
+**"Invalid column name"**
+- SQL Server identifiers are case-insensitive by default but case-sensitive in case-sensitive collations
+- Use square brackets for identifiers with spaces: `[Column Name]`
+
+**"Query timeout"**
+- Long-running queries may exceed timeout
+- Optimize query or adjust timeout settings in Redash
+- Consider adding indexes
+
+### Character Encoding Issues
+
+**Garbled characters or encoding errors:**
+- Verify `charset` matches your SQL Server collation
+- For international characters, use `UTF-8`
+- Check SQL Server database collation:
+  ```sql
+  SELECT DATABASEPROPERTYEX('database_name', 'Collation');
+  ```
+
+## Best Practices
+
+1. **Use dedicated read-only user**: Create a user with only SELECT permissions:
+   ```sql
+   CREATE LOGIN redash_user WITH PASSWORD = 'StrongPassword123!';
+   USE [YourDatabase];
+   CREATE USER redash_user FOR LOGIN redash_user;
+   GRANT SELECT TO redash_user;
+   ```
+
+2. **Named instances**: Explicitly specify port or use SQL Server Browser service
+
+3. **Azure SQL Database**: 
+   - Use format `username@servername` for authentication
+   - Connections are encrypted by default
+   - Consider connection pooling settings
+
+4. **Performance**:
+   - Use `TOP` clause to limit large result sets
+   - Create appropriate indexes for common queries
+   - Monitor query execution plans
+
+5. **TDS Version**: Start with default 7.0, upgrade only if you need specific features
+
+## Advanced Configuration
+
+### Named Instances
+
+For named SQL Server instances, you can either:
+
+1. **Specify the instance in the server name**:
+   ```
+   server: SERVERNAME\INSTANCENAME
+   port: 1433
+   ```
+
+2. **Use the dynamic port** (if SQL Browser is running):
+   ```
+   server: SERVERNAME\INSTANCENAME
+   port: 0
+   ```
+
+3. **Use the specific port** for the instance:
+   ```
+   server: SERVERNAME
+   port: 49152  # Example dynamic port
+   ```
+
+### Connection Pooling
+
+Connection pooling is handled by the pymssql driver. For high-traffic Redash instances, consider:
+
+- Monitoring active connections to SQL Server
+- Adjusting SQL Server's max connections setting
+- Using read-only replicas for query distribution
+
+## Related Data Sources
+
+- **Azure SQL Database**: Use the same MSSQL data source
+- **Azure Synapse Analytics**: Use the MSSQL data source with appropriate TDS version
+- **PostgreSQL**: For migrating from SQL Server syntax

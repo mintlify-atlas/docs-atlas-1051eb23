@@ -1,0 +1,803 @@
+---
+title: Kubernetes Deployment
+description: Deploy Redash on Kubernetes with best practices
+---
+
+Deploy Redash on Kubernetes for scalable, production-ready infrastructure.
+
+## Architecture Overview
+
+Redash requires these Kubernetes components:
+
+- **Deployment**: Server (web UI)
+- **Deployment**: Scheduler (cron jobs)
+- **Deployment**: Worker (background jobs)
+- **StatefulSet**: PostgreSQL (or external database)
+- **Deployment**: Redis (or external cache)
+- **Services**: For internal communication
+- **Ingress**: For external access
+
+## Quick Start with Kubernetes
+
+### Prerequisites
+
+- Kubernetes cluster (1.19+)
+- `kubectl` configured
+- Persistent Volume provisioner
+- Ingress controller (nginx, Traefik, etc.)
+
+### Basic Deployment
+
+Create a namespace:
+
+```bash
+kubectl create namespace redash
+```
+
+## Deployment Manifests
+
+### Namespace
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redash
+```
+
+### ConfigMap
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redash-config
+  namespace: redash
+data:
+  REDASH_HOST: "https://redash.example.com"
+  REDASH_LOG_LEVEL: "INFO"
+  REDASH_REDIS_URL: "redis://redis:6379/0"
+  REDASH_DATABASE_URL: "postgresql://redash:password@postgres:5432/redash"
+  PYTHONUNBUFFERED: "0"
+```
+
+### Secret
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redash-secrets
+  namespace: redash
+type: Opaque
+stringData:
+  REDASH_COOKIE_SECRET: "<generate-random-32-char-string>"
+  REDASH_SECRET_KEY: "<generate-random-32-char-string>"
+  POSTGRES_PASSWORD: "<database-password>"
+```
+
+Generate secrets:
+```bash
+kubectl create secret generic redash-secrets \
+  --from-literal=REDASH_COOKIE_SECRET=$(openssl rand -base64 32) \
+  --from-literal=REDASH_SECRET_KEY=$(openssl rand -base64 32) \
+  --from-literal=POSTGRES_PASSWORD=$(openssl rand -base64 16) \
+  -n redash
+```
+
+### PostgreSQL StatefulSet
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: redash
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: postgres
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: redash
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: redash
+            - name: POSTGRES_DB
+              value: redash
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redash-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+```
+
+### Redis Deployment
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: redash
+spec:
+  ports:
+    - port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: redash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+```
+
+### Redash Server Deployment
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redash-server
+  namespace: redash
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: redash-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redash-server
+  namespace: redash
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redash-server
+  template:
+    metadata:
+      labels:
+        app: redash-server
+    spec:
+      containers:
+        - name: server
+          image: redash/redash:latest
+          command: ["server"]
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: redash-config
+            - secretRef:
+                name: redash-secrets
+          env:
+            - name: REDASH_WEB_WORKERS
+              value: "4"
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+```
+
+### Redash Scheduler Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redash-scheduler
+  namespace: redash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redash-scheduler
+  template:
+    metadata:
+      labels:
+        app: redash-scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: redash/redash:latest
+          command: ["scheduler"]
+          envFrom:
+            - configMapRef:
+                name: redash-config
+            - secretRef:
+                name: redash-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+```
+
+### Redash Worker Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redash-worker
+  namespace: redash
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redash-worker
+  template:
+    metadata:
+      labels:
+        app: redash-worker
+    spec:
+      containers:
+        - name: worker
+          image: redash/redash:latest
+          command: ["worker"]
+          envFrom:
+            - configMapRef:
+                name: redash-config
+            - secretRef:
+                name: redash-secrets
+          env:
+            - name: WORKERS_COUNT
+              value: "2"
+            - name: QUEUES
+              value: "queries,scheduled_queries,schemas"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+```
+
+### Ingress
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: redash-ingress
+  namespace: redash
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - redash.example.com
+      secretName: redash-tls
+  rules:
+    - host: redash.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: redash-server
+                port:
+                  number: 5000
+```
+
+## Database Initialization Job
+
+Run once to initialize the database:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redash-init-db
+  namespace: redash
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init-db
+          image: redash/redash:latest
+          command: ["create_db"]
+          envFrom:
+            - configMapRef:
+                name: redash-config
+            - secretRef:
+                name: redash-secrets
+```
+
+Run the job:
+```bash
+kubectl apply -f init-db-job.yaml
+kubectl wait --for=condition=complete --timeout=300s job/redash-init-db -n redash
+```
+
+## Helm Chart Considerations
+
+While there's no official Helm chart, you can create one with:
+
+### Chart Structure
+
+```
+redash/
+├── Chart.yaml
+├── values.yaml
+├── templates/
+│   ├── configmap.yaml
+│   ├── secret.yaml
+│   ├── server-deployment.yaml
+│   ├── scheduler-deployment.yaml
+│   ├── worker-deployment.yaml
+│   ├── postgres-statefulset.yaml
+│   ├── redis-deployment.yaml
+│   ├── services.yaml
+│   ├── ingress.yaml
+│   └── init-job.yaml
+└── README.md
+```
+
+### values.yaml Example
+
+```yaml
+image:
+  repository: redash/redash
+  tag: latest
+  pullPolicy: IfNotPresent
+
+server:
+  replicas: 2
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2000m
+
+scheduler:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+
+worker:
+  replicas: 2
+  count: 2
+  queues: "queries,scheduled_queries,schemas"
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+
+postgresql:
+  enabled: true
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+
+redis:
+  enabled: true
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+
+ingress:
+  enabled: true
+  host: redash.example.com
+  tls: true
+  annotations: {}
+
+env:
+  REDASH_LOG_LEVEL: INFO
+  REDASH_ENFORCE_HTTPS: "true"
+
+secrets:
+  cookieSecret: ""
+  secretKey: ""
+```
+
+## Scaling
+
+### Horizontal Pod Autoscaling (HPA)
+
+**Server HPA**:
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: redash-server-hpa
+  namespace: redash
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: redash-server
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+```
+
+**Worker HPA**:
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: redash-worker-hpa
+  namespace: redash
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: redash-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+```
+
+### Manual Scaling
+
+```bash
+# Scale server
+kubectl scale deployment redash-server --replicas=4 -n redash
+
+# Scale workers
+kubectl scale deployment redash-worker --replicas=5 -n redash
+```
+
+## High Availability
+
+### Database HA
+
+For production, use managed PostgreSQL:
+
+- **AWS RDS**: Amazon RDS for PostgreSQL
+- **GCP**: Cloud SQL for PostgreSQL
+- **Azure**: Azure Database for PostgreSQL
+- **Self-managed**: PostgreSQL with replication
+
+Update ConfigMap:
+```yaml
+REDASH_DATABASE_URL: "postgresql://user:pass@managed-db.example.com:5432/redash?sslmode=require"
+```
+
+### Redis HA
+
+Use Redis Sentinel or managed Redis:
+
+- **AWS**: Amazon ElastiCache for Redis
+- **GCP**: Cloud Memorystore
+- **Azure**: Azure Cache for Redis
+
+### Multi-Region Deployment
+
+For disaster recovery:
+
+1. Replicate PostgreSQL across regions
+2. Use global load balancer
+3. Deploy Redash in multiple regions
+4. Share Redis state or use Redis replication
+
+## Monitoring
+
+### Prometheus Metrics
+
+Add ServiceMonitor:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redash-metrics
+  namespace: redash
+spec:
+  selector:
+    matchLabels:
+      app: redash-server
+  endpoints:
+    - port: http
+      path: /status.json
+      interval: 30s
+```
+
+### Health Checks
+
+Verify deployments:
+
+```bash
+# Check all pods
+kubectl get pods -n redash
+
+# Check server health
+kubectl exec -it deployment/redash-server -n redash -- curl http://localhost:5000/ping
+
+# View logs
+kubectl logs -f deployment/redash-server -n redash
+```
+
+## Storage
+
+### Persistent Volumes
+
+Use StorageClass for dynamic provisioning:
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: redash-storage
+provisioner: kubernetes.io/aws-ebs  # or gce-pd, azure-disk
+parameters:
+  type: gp3
+  fsType: ext4
+allowVolumeExpansion: true
+```
+
+### Backup Strategy
+
+**PostgreSQL Backup CronJob**:
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: redash
+spec:
+  schedule: "0 2 * * *"  # 2 AM daily
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: postgres:18-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  pg_dump -h postgres -U redash redash | gzip > /backup/redash-$(date +%Y%m%d).sql.gz
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: redash-secrets
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: backup-pvc
+          restartPolicy: OnFailure
+```
+
+## Security
+
+### Network Policies
+
+Restrict traffic:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redash-network-policy
+  namespace: redash
+spec:
+  podSelector:
+    matchLabels:
+      app: redash-server
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 5000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+```
+
+### Pod Security Policy
+
+```yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: redash-psp
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  volumes:
+    - configMap
+    - secret
+    - persistentVolumeClaim
+```
+
+## Troubleshooting
+
+### View Pod Status
+
+```bash
+kubectl get pods -n redash
+kubectl describe pod <pod-name> -n redash
+```
+
+### Access Pod Logs
+
+```bash
+kubectl logs -f deployment/redash-server -n redash
+kubectl logs -f deployment/redash-worker -n redash --tail=100
+```
+
+### Execute Commands in Pod
+
+```bash
+# Interactive shell
+kubectl exec -it deployment/redash-server -n redash -- bash
+
+# Run management command
+kubectl exec -it deployment/redash-server -n redash -- /app/manage.py check_settings
+```
+
+### Database Issues
+
+```bash
+# Test database connection
+kubectl exec -it deployment/redash-server -n redash -- \
+  psql $REDASH_DATABASE_URL -c "SELECT 1;"
+```
+
+### Redis Connection
+
+```bash
+kubectl exec -it deployment/redis -n redash -- redis-cli ping
+```
+
+## Migration from Docker Compose
+
+1. **Export data** from Docker Compose
+2. **Create Kubernetes secrets** from environment variables
+3. **Apply manifests** in order: namespace, secrets, postgres, redis, server, scheduler, worker
+4. **Import data** to Kubernetes PostgreSQL
+5. **Update DNS** to point to Kubernetes ingress
+
+## Next Steps
+
+- [Environment Variables](/deployment/environment-variables)
+- [Upgrading Redash](/deployment/upgrading)
+- [Docker Deployment](/deployment/docker)

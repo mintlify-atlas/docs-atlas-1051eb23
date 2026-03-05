@@ -1,0 +1,225 @@
+---
+title: Queries
+description: Create, execute, and manage SQL queries in Redash
+---
+
+Queries are the foundation of Redash. They allow you to retrieve data from your connected data sources using SQL or other query languages.
+
+## Creating a Query
+
+To create a new query:
+
+1. Click **Create** → **Query** from the navigation menu
+2. Select a data source from the dropdown
+3. Write your query in the editor
+4. Click **Execute** to run the query
+
+All new queries are created as drafts by default. You can save your query by clicking the **Save** button or pressing `Cmd/Ctrl+S`.
+
+## Query Editor
+
+The query editor is a powerful interface for writing and testing queries:
+
+### Editor Features
+
+- **Syntax highlighting** - Automatically highlights SQL syntax based on your data source type
+- **Autocomplete** - Press `Ctrl+Space` to trigger autocomplete for table and column names
+- **Format query** - Use `Cmd/Ctrl+Shift+F` to automatically format your SQL query
+- **Execute selected** - Select a portion of your query and press `Cmd/Ctrl+Enter` to execute only that section
+
+### Keyboard Shortcuts
+
+- `Cmd/Ctrl+Enter` - Execute query
+- `Cmd/Ctrl+S` - Save query
+- `Cmd/Ctrl+P` - Add new parameter
+- `Cmd/Ctrl+Shift+F` - Format query (for supported data sources)
+- `Alt+Shift+D` or `Alt+D` - Toggle schema browser
+
+## Schema Browser
+
+The schema browser appears on the left side of the query editor and displays:
+
+- Available databases and tables from your data source
+- Table columns and their data types
+- Click any table or column name to insert it into your query
+
+You can configure schema browser options to filter which databases and tables are displayed.
+
+## Query Parameters
+
+### Adding Parameters
+
+Parameters make your queries dynamic and reusable. To add a parameter:
+
+1. Click **Add Parameter** or press `Cmd/Ctrl+P`
+2. Configure the parameter settings:
+   - **Keyword** - The placeholder name in your query (e.g., `country`)
+   - **Title** - Display label for the parameter
+   - **Type** - Text, Number, Date, Date Range, Dropdown List, or Query Based Dropdown List
+
+In your query, reference parameters using double curly braces:
+
+```sql
+SELECT *
+FROM orders
+WHERE country = '{{ country }}'
+  AND order_date >= '{{ start_date }}'
+```
+
+### Parameter Types
+
+- **Text** - Free-form text input
+- **Number** - Numeric input with validation
+- **Date** - Date picker
+- **Date Range** - Start and end date selection
+- **Dropdown List** - Predefined list of values
+- **Query Based Dropdown List** - Options populated from another query
+
+### Query Based Dropdowns
+
+You can populate dropdown options from another query:
+
+1. Create a query that returns the values you want in the dropdown
+2. In your parameter settings, select "Query Based Dropdown List"
+3. Choose the query and the column to use for values
+
+The referenced query must have at least view permissions for all users who will access the parent query.
+
+## Executing Queries
+
+### Manual Execution
+
+Click the **Execute** button or press `Cmd/Ctrl+Enter` to run your query. The execution status will be displayed:
+
+- **Executing** - Query is currently running
+- **Done** - Query completed successfully
+- **Failed** - Query encountered an error
+
+You can cancel a running query by clicking the **Cancel** button.
+
+### Auto-limit
+
+Enable the **Auto Limit** checkbox to automatically append a `LIMIT` clause to your query, preventing accidentally retrieving large result sets during development.
+
+## Scheduling Queries
+
+Schedule queries to run automatically at regular intervals:
+
+1. Open your query
+2. Click the schedule icon or "Never" in the metadata section
+3. Choose a refresh interval:
+   - Every minute/hour/day/week
+   - Custom interval in seconds
+
+Scheduled queries will execute automatically and cache the results. The query results page will display when the query was last executed.
+
+### Scheduling API
+
+The schedule interval is stored in seconds. Common values:
+
+- 60 = Every minute
+- 3600 = Every hour  
+- 86400 = Every day
+- 604800 = Every week
+
+## Query Metadata
+
+The metadata panel displays important information about your query:
+
+- **Created by** - User who created the query
+- **Created at** - Creation timestamp
+- **Last executed at** - When the query was last run
+- **Runtime** - Execution time of the last run
+- **Data source** - Connected data source
+- **Schedule** - Refresh interval (if scheduled)
+
+## Query Results
+
+After execution, query results are displayed in a table format. You can:
+
+- **Download results** - Export to CSV, Excel, or JSON
+- **Create visualizations** - Click **+ New Visualization** to chart your data
+- **Filter results** - Use column filters to narrow down displayed data
+- **Sort results** - Click column headers to sort
+
+Results are cached and reused when you view the query page again. Click **Refresh** to execute the query again.
+
+## Search and Filters
+
+Redash provides several ways to find and organize queries:
+
+### Full-text Search
+
+Use the search box to find queries by:
+
+- Query name
+- Query text/SQL
+- Description
+- Tags
+
+### Filtering
+
+- **My Queries** - Queries you created
+- **Favorites** - Queries you've starred
+- **Archive** - Archived queries
+- **Tags** - Filter by tag labels
+
+### Sorting
+
+Sort queries by:
+
+- Name
+- Created date
+- Last execution time
+- Runtime
+- Schedule interval
+
+## Query Actions
+
+### Fork a Query
+
+Create a copy of an existing query:
+
+1. Open the query
+2. Click **Fork** from the query menu
+3. A new query is created with the same SQL text
+
+This is useful for experimenting with variations of a query without modifying the original.
+
+### Archive a Query
+
+Archive queries you no longer need:
+
+1. Open the query  
+2. Click the menu (⋮) → **Archive**
+
+Archived queries are hidden from the main query list but can be accessed from the Archive view. Only admins and the query owner can archive queries.
+
+### API Access
+
+Every query has an API key that allows external access to query results:
+
+1. Open the query
+2. Click **Show API Key**
+3. Use the provided URL to access query results in JSON format
+
+You can regenerate the API key at any time. Only admins and the query owner can regenerate API keys.
+
+## Permissions
+
+Query access is controlled by groups:
+
+- Users can only view queries shared with their groups
+- Edit permissions allow modifying the query
+- View-only access allows viewing results but not editing
+
+Data source permissions also apply - users need access to the underlying data source to execute queries.
+
+## Best Practices
+
+- **Use parameters** instead of hardcoded values for reusability
+- **Add descriptions** to document what your query does
+- **Tag queries** to organize them by team, project, or category  
+- **Schedule queries** that are accessed frequently to improve performance
+- **Test with Auto Limit** enabled when developing new queries
+- **Use meaningful names** that describe what the query retrieves

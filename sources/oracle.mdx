@@ -1,0 +1,430 @@
+---
+title: Oracle Database
+description: Connect Redash to Oracle Database
+---
+
+## Overview
+
+The Oracle data source allows you to connect to Oracle Database using the python-oracledb driver (formerly cx_Oracle). It supports Oracle Database 12c and later versions, including Oracle Cloud Database services.
+
+## Connection Setup
+
+### Basic Configuration
+
+To connect to an Oracle database, provide the following configuration:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `host` | string | Yes | - | Database server hostname or `_useservicename` for DSN |
+| `port` | number | Yes | - | Database listener port (typically 1521) |
+| `servicename` | string | Yes | - | Oracle service name or DSN connection string |
+| `user` | string | Yes | - | Username for authentication |
+| `password` | string | Yes | - | Password for authentication |
+| `encoding` | string | No | - | Client character set encoding (NLS_LANG) |
+
+### Connection Methods
+
+#### Method 1: Host and Service Name (Standard)
+
+```
+host: oracle.example.com
+port: 1521
+servicename: ORCL
+user: redash_user
+password: secure_password
+```
+
+This creates a connection using: `host:port/servicename`
+
+#### Method 2: DSN Service Name
+
+For DSN-based connections (configured in `tnsnames.ora`), use the special host value:
+
+```
+host: _useservicename
+port: 1521
+servicename: MY_DSN_ENTRY
+user: redash_user
+password: secure_password
+```
+
+<Note>
+When `host` is set to `_useservicename` (case-insensitive), the `servicename` field is used directly as the DSN. This allows you to use TNS names configured in your `tnsnames.ora` file.
+</Note>
+
+### Connection String Examples
+
+**Oracle Database on-premises:**
+```
+host: db-server.local
+port: 1521
+servicename: PROD
+user: analytics_user
+password: oracle_pass
+```
+
+**Oracle Cloud (OCI):**
+```
+host: mydb.oraclecloud.com
+port: 1522
+servicename: mydb_high
+user: ADMIN
+password: cloud_password
+```
+
+**Using TNS Names:**
+```
+host: _useservicename
+port: 1521
+servicename: PRODUCTION_DB
+user: redash
+password: password
+```
+
+**With character encoding:**
+```
+host: oracle.example.com
+port: 1521
+servicename: ORCL
+user: redash_user
+password: password
+encoding: AMERICAN_AMERICA.AL32UTF8
+```
+
+## Character Encoding
+
+The `encoding` parameter sets the `NLS_LANG` environment variable for the connection. This controls:
+
+- Client character set
+- Language for error messages
+- Date and number formats
+
+### Common Encoding Values
+
+| Encoding | Description |
+|----------|-------------|
+| `AMERICAN_AMERICA.AL32UTF8` | UTF-8 with American settings (recommended) |
+| `AMERICAN_AMERICA.UTF8` | UTF-8 (older databases) |
+| `AMERICAN_AMERICA.WE8ISO8859P1` | Western European (ISO 8859-1) |
+| `JAPANESE_JAPAN.JA16SJIS` | Japanese Shift-JIS |
+
+<Tip>
+For international deployments, use `AL32UTF8` encoding to ensure proper handling of all Unicode characters.
+</Tip>
+
+## Query Features
+
+### Schema Discovery
+
+The Oracle data source automatically discovers:
+
+- All tables the user has access to via `all_tab_cols`
+- Column names from each table
+- Tables from all schemas (excluding system schemas)
+
+**Excluded system schemas:**
+- `SYS`, `SYSTEM`, `ORDSYS`, `CTXSYS`, `WMSYS`, `MDSYS`
+- `ORDDATA`, `XDB`, `OUTLN`, `DMSYS`, `DSSYS`, `EXFSYS`, `LBACSYS`, `TSMSYS`
+
+### Schema Qualification
+
+All tables are shown with owner/schema prefix:
+```
+HR.EMPLOYEES
+SALES.ORDERS
+INVENTORY.PRODUCTS
+```
+
+### Data Type Mapping
+
+Oracle types are mapped to Redash types:
+
+| Oracle Type | Redash Type | Notes |
+|------------|-------------|-------|
+| `NUMBER` (scale = 0) | Integer | Whole numbers |
+| `NUMBER` (scale > 0) | Float | Decimals |
+| `NUMBER` (scale = NULL) | Integer | Precision-only numbers |
+| `BINARY_FLOAT`, `BINARY_DOUBLE` | Float | Native floating-point |
+| `VARCHAR2`, `CHAR`, `NCHAR`, `NVARCHAR2` | String | Character types |
+| `CLOB`, `NCLOB`, `LONG` | String | Large text (up to 80,000 chars) |
+| `DATE`, `TIMESTAMP`, `TIMESTAMP WITH TIME ZONE` | DateTime | Date and time types |
+| `INTERVAL` | DateTime | Time intervals |
+| `ROWID`, `UROWID` | Integer | Row identifiers |
+
+### Special Type Handling
+
+**CLOB and LOB columns**: Automatically converted to strings with a maximum length of 80,000 characters.
+
+**NUMBER type**: Intelligently mapped based on scale:
+- `NUMBER(10)` → Integer
+- `NUMBER(10, 0)` → Integer  
+- `NUMBER(10, 2)` → Float
+- `NUMBER` → Integer (default)
+
+**Fixed-length strings**: Converted to variable-length strings with proper length handling.
+
+### Query Syntax
+
+Oracle uses specific SQL syntax:
+
+**Limit results** (Oracle 12c+):
+```sql
+SELECT * FROM employees
+FETCH NEXT 1000 ROWS ONLY;
+```
+
+**Older Oracle versions** (pre-12c):
+```sql
+SELECT * FROM (
+  SELECT e.* FROM employees e
+) WHERE ROWNUM <= 1000;
+```
+
+**Dual table** for simple queries:
+```sql
+SELECT 1 FROM dual;
+SELECT SYSDATE FROM dual;
+```
+
+### Query Execution
+
+- **No query annotation**: Comments are not automatically added
+- **Row count**: For DML statements (INSERT, UPDATE, DELETE), returns affected row count
+- **Query cancellation**: Long-running queries can be cancelled
+- **Output type handlers**: Custom handlers ensure proper type conversion
+- **Noop query**: `SELECT 1 FROM dual` for connection testing
+
+## SSL/TLS Configuration
+
+Oracle supports SSL/TLS connections through Oracle Net configuration.
+
+### Configuring SSL
+
+SSL must be configured in Oracle's `sqlnet.ora` and `tnsnames.ora` files:
+
+**sqlnet.ora:**
+```
+SSL_CLIENT_AUTHENTICATION = FALSE
+WALLET_LOCATION = (SOURCE = (METHOD = FILE) (METHOD_DATA = (DIRECTORY = /path/to/wallet)))
+SSL_VERSION = 1.2
+SSL_CIPHER_SUITES = (SSL_RSA_WITH_AES_256_CBC_SHA256)
+```
+
+**tnsnames.ora:**
+```
+MY_SECURE_DB =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCPS)(HOST = oracle.example.com)(PORT = 2484))
+    (CONNECT_DATA =
+      (SERVICE_NAME = ORCL)
+      (SECURITY = (SSL_SERVER_CERT_DN = "CN=oracle.example.com"))
+    )
+  )
+```
+
+Then use DSN connection method:
+```
+host: _useservicename
+servicename: MY_SECURE_DB
+```
+
+<Note>
+SSL configuration is managed at the Oracle client level, not through Redash data source settings. Ensure your Oracle Instant Client or full client is properly configured with Oracle Wallet.
+</Note>
+
+## Configuration Schema Reference
+
+Complete configuration schema from `redash/query_runner/oracle.py:62-79`:
+
+```python
+{
+    "type": "object",
+    "properties": {
+        "user": {"type": "string"},
+        "password": {"type": "string"},
+        "host": {
+            "type": "string",
+            "title": "Host (or '_useservicename' for DSN)"
+        },
+        "port": {"type": "number"},
+        "servicename": {"type": "string", "title": "DSN Service Name"},
+        "encoding": {"type": "string"}
+    },
+    "required": ["servicename", "user", "password", "host", "port"]
+}
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+**"ORA-12170: TNS:Connect timeout occurred"**
+- Verify host and port are correct
+- Check network connectivity and firewall rules
+- Ensure Oracle listener is running:
+  ```bash
+  lsnrctl status
+  ```
+
+**"ORA-12514: TNS:listener does not currently know of service requested"**
+- Verify `servicename` is correct
+- Check listener configuration:
+  ```bash
+  lsnrctl services
+  ```
+- Try using SID instead of service name (update connection method)
+
+**"ORA-01017: invalid username/password"**
+- Verify credentials are correct
+- Check if user account is locked:
+  ```sql
+  SELECT username, account_status FROM dba_users WHERE username = 'REDASH_USER';
+  ```
+- Unlock if necessary:
+  ```sql
+  ALTER USER redash_user ACCOUNT UNLOCK;
+  ```
+
+**"ORA-28040: No matching authentication protocol"**
+- Oracle 12c+ requires password verifiers
+- Update Oracle client to match server version
+- Or adjust `SQLNET.ALLOWED_LOGON_VERSION` on server
+
+### TNS Configuration Issues
+
+**"Could not find TNS name"**
+- Verify `tnsnames.ora` file exists and is readable
+- Check `TNS_ADMIN` environment variable points to correct directory
+- Ensure service name matches entry in `tnsnames.ora` exactly
+
+**Using DSN with Redash:**
+- Set `host` to `_useservicename`
+- Put TNS name in `servicename` field
+- Ensure `tnsnames.ora` is accessible to Redash process
+
+### Query Errors
+
+**"ORA-00933: SQL command not properly ended"**
+- Remove trailing semicolons from SQL queries in Redash
+- Oracle python driver doesn't require statement terminators
+
+**"ORA-01008: not all variables bound"**
+- Check for parameter placeholders in query
+- Use proper parameter syntax for Redash
+
+**"Query failed at line X, column Y"**
+- Error messages include precise location of syntax errors
+- Check Oracle-specific SQL syntax requirements
+
+### Character Encoding Issues
+
+**Garbled characters or encoding errors:**
+- Set `encoding` parameter to match database character set
+- Check database character set:
+  ```sql
+  SELECT value FROM nls_database_parameters WHERE parameter = 'NLS_CHARACTERSET';
+  ```
+- Use `AL32UTF8` for Unicode support
+
+**"ORA-12714: invalid national character set specified"**
+- Verify encoding string format is correct
+- Use format: `LANGUAGE_TERRITORY.CHARSET`
+- Example: `AMERICAN_AMERICA.AL32UTF8`
+
+## Best Practices
+
+1. **Create read-only user**:
+   ```sql
+   CREATE USER redash_user IDENTIFIED BY "StrongPassword123!";
+   GRANT CREATE SESSION TO redash_user;
+   GRANT SELECT ANY TABLE TO redash_user;  -- Or grant on specific schemas
+   ```
+
+2. **Grant specific schema access** (more secure):
+   ```sql
+   GRANT SELECT ON hr.employees TO redash_user;
+   GRANT SELECT ON sales.orders TO redash_user;
+   ```
+
+3. **Use Resource Manager** to limit query resources:
+   ```sql
+   -- Create consumer group for Redash queries
+   BEGIN
+     DBMS_RESOURCE_MANAGER.CREATE_CONSUMER_GROUP(
+       consumer_group => 'REDASH_GROUP',
+       comment => 'Resource group for Redash queries'
+     );
+   END;
+   ```
+
+4. **Connection pooling**: Oracle connections can be resource-intensive
+   - Use connection pooling at application level
+   - Consider using Oracle Resource Manager
+   - Monitor session counts
+
+5. **Character encoding**: Always set encoding for international deployments
+
+6. **Use bind variables** for parameterized queries to improve performance
+
+7. **CLOB handling**: Be aware of 80,000 character limit for CLOB conversion
+
+## Performance Optimization
+
+### Query Performance
+
+**Use EXPLAIN PLAN** to analyze queries:
+```sql
+EXPLAIN PLAN FOR
+SELECT * FROM large_table WHERE id = 12345;
+
+SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
+```
+
+**Add indexes** for frequently queried columns:
+```sql
+CREATE INDEX idx_orders_date ON orders(order_date);
+```
+
+**Use optimizer hints** when necessary:
+```sql
+SELECT /*+ INDEX(e emp_name_idx) */ * FROM employees e WHERE last_name = 'Smith';
+```
+
+### Limit Result Sets
+
+Always limit large result sets:
+```sql
+-- Oracle 12c+
+SELECT * FROM large_table
+FETCH FIRST 1000 ROWS ONLY;
+
+-- All versions
+SELECT * FROM (
+  SELECT * FROM large_table
+) WHERE ROWNUM <= 1000;
+```
+
+## Oracle Cloud Configuration
+
+For Oracle Autonomous Database (ATP/ADW):
+
+1. **Download wallet** from Oracle Cloud Console
+2. **Extract wallet files** to accessible location
+3. **Configure TNS_ADMIN** to point to wallet directory
+4. **Use service names** from `tnsnames.ora` in wallet
+5. **Connection example**:
+   ```
+   host: _useservicename
+   servicename: mydb_high
+   user: ADMIN
+   password: WalletPassword123!
+   ```
+
+<Tip>
+Oracle Cloud provides different service names (high, medium, low) with different performance characteristics. Use `_high` for analytics queries.
+</Tip>
+
+## Related Data Sources
+
+- **PostgreSQL**: Alternative open-source option with similar feature set
+- **MySQL**: Lighter-weight alternative for smaller datasets

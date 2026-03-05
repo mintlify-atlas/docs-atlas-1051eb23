@@ -1,0 +1,463 @@
+---
+title: NoSQL Databases
+description: Configure connections to MongoDB, Elasticsearch, Cassandra, and other NoSQL databases
+---
+
+Redash supports various NoSQL databases for querying document stores, search engines, and wide-column databases.
+
+## MongoDB
+
+MongoDB is a popular document-oriented NoSQL database.
+
+### Configuration
+
+<ParamField path="connectionString" type="string" required>
+  MongoDB connection string (e.g., `mongodb://localhost:27017` or `mongodb+srv://cluster.mongodb.net`)
+</ParamField>
+
+<ParamField path="dbName" type="string" required>
+  Database name to query
+</ParamField>
+
+<ParamField path="username" type="string">
+  Username for authentication (can be included in connection string)
+</ParamField>
+
+<ParamField path="password" type="string">
+  Password for authentication (stored encrypted)
+</ParamField>
+
+<ParamField path="replicaSetName" type="string">
+  Replica set name for replica set connections
+</ParamField>
+
+<ParamField path="readPreference" type="string">
+  Read preference for replica sets:
+  - `primaryPreferred` - Read from primary, fall back to secondary
+  - `primary` - Read only from primary
+  - `secondary` - Read only from secondary
+  - `secondaryPreferred` - Read from secondary, fall back to primary
+  - `nearest` - Read from nearest member
+</ParamField>
+
+<ParamField path="flatten" type="boolean" default="false">
+  Flatten nested document structures in results
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Connection String: mongodb://mongo.example.com:27017
+Database Name: analytics
+Username: redash_user
+Password: ••••••••
+Flatten Results: False
+```
+
+### MongoDB Atlas
+
+For MongoDB Atlas (cloud):
+
+```yaml
+Connection String: mongodb+srv://cluster0.xxxxx.mongodb.net
+Database Name: analytics
+Username: redash_user
+Password: ••••••••
+```
+
+### Query Format
+
+MongoDB queries in Redash use JSON format:
+
+```json
+{
+  "collection": "users",
+  "query": {
+    "age": { "$gte": 18 }
+  },
+  "fields": ["name", "email", "age"],
+  "sort": [
+    { "name": "age", "direction": -1 }
+  ],
+  "limit": 100
+}
+```
+
+### Aggregation Queries
+
+```json
+{
+  "collection": "orders",
+  "aggregate": [
+    { "$match": { "status": "completed" } },
+    { "$group": {
+        "_id": "$customerId",
+        "total": { "$sum": "$amount" },
+        "count": { "$sum": 1 }
+      }
+    },
+    { "$sort": { "total": -1 } },
+    { "$limit": 10 }
+  ]
+}
+```
+
+### Special Date Handling
+
+```json
+{
+  "collection": "events",
+  "query": {
+    "timestamp": {
+      "$gte": { "$humanTime": "7 days ago" },
+      "$lt": { "$humanTime": "now" }
+    }
+  }
+}
+```
+
+---
+
+## Elasticsearch
+
+Elasticsearch is a distributed search and analytics engine.
+
+### Configuration
+
+<ParamField path="server" type="string" required>
+  Elasticsearch base URL (e.g., `https://elasticsearch.example.com:9200`)
+</ParamField>
+
+<ParamField path="basic_auth_user" type="string">
+  Username for HTTP basic authentication
+</ParamField>
+
+<ParamField path="basic_auth_password" type="string">
+  Password for HTTP basic authentication
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Base URL: https://elasticsearch.example.com:9200
+Basic Auth User: redash
+Basic Auth Password: ••••••••
+```
+
+### Query Format
+
+Elasticsearch queries use JSON:
+
+```json
+{
+  "index": "logs-*",
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "level": "error" } },
+        { "range": {
+            "@timestamp": {
+              "gte": "now-24h",
+              "lt": "now"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "size": 100,
+  "sort": [
+    { "@timestamp": { "order": "desc" } }
+  ]
+}
+```
+
+### Aggregation Example
+
+```json
+{
+  "index": "logs-*",
+  "size": 0,
+  "aggs": {
+    "errors_over_time": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "interval": "1h"
+      },
+      "aggs": {
+        "by_level": {
+          "terms": {
+            "field": "level.keyword"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Amazon Elasticsearch Service
+
+For AWS Elasticsearch/OpenSearch:
+
+```yaml
+Base URL: https://search-domain-xxxxx.us-east-1.es.amazonaws.com
+Basic Auth User: master_user
+Basic Auth Password: ••••••••
+```
+
+---
+
+## Cassandra
+
+Apache Cassandra is a distributed wide-column NoSQL database.
+
+### Configuration
+
+<ParamField path="host" type="string" required>
+  Cassandra node hostname or IP address
+</ParamField>
+
+<ParamField path="port" type="number" default="9042">
+  Cassandra native protocol port
+</ParamField>
+
+<ParamField path="keyspace" type="string" required>
+  Keyspace name to query
+</ParamField>
+
+<ParamField path="username" type="string">
+  Username for authentication
+</ParamField>
+
+<ParamField path="password" type="string">
+  Password for authentication
+</ParamField>
+
+<ParamField path="protocol" type="number" default="3">
+  Protocol version (3 or 4)
+</ParamField>
+
+<ParamField path="timeout" type="number" default="10">
+  Query timeout in seconds
+</ParamField>
+
+<ParamField path="useSsl" type="boolean" default="false" required>
+  Enable SSL/TLS connection
+</ParamField>
+
+<ParamField path="sslCertificateFile" type="string">
+  Base64-encoded SSL certificate
+</ParamField>
+
+<ParamField path="sslProtocol" type="string">
+  SSL protocol version:
+  - `PROTOCOL_TLSv1_2`
+  - `PROTOCOL_TLS`
+  - Other SSL protocol constants
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Host: cassandra.example.com
+Port: 9042
+Keyspace: analytics
+Username: redash_user
+Password: ••••••••
+Protocol Version: 4
+Timeout: 30
+Use SSL: false
+```
+
+### Query Format
+
+Cassandra uses CQL (Cassandra Query Language):
+
+```sql
+SELECT user_id, username, email, created_at
+FROM users
+WHERE user_id IN (1, 2, 3, 4, 5)
+LIMIT 100;
+```
+
+### Time-Based Queries
+
+```sql
+SELECT *
+FROM events
+WHERE user_id = 12345
+  AND event_time >= '2024-01-01'
+  AND event_time < '2024-02-01'
+ORDER BY event_time DESC;
+```
+
+### ScyllaDB
+
+ScyllaDB is a Cassandra-compatible database. Use the same configuration as Cassandra, but select "ScyllaDB" as the data source type.
+
+---
+
+## Couchbase
+
+Couchbase is a distributed NoSQL document database.
+
+### Configuration
+
+- **Host**: Couchbase server URL
+- **Port**: Connection port
+- **Bucket**: Bucket name
+- **Username**: Authentication username
+- **Password**: Authentication password
+
+### Query Format
+
+Couchbase uses N1QL (SQL for JSON):
+
+```sql
+SELECT name, email, type
+FROM `users`
+WHERE type = 'premium'
+  AND created_date >= '2024-01-01'
+LIMIT 100;
+```
+
+---
+
+## ArangoDB
+
+ArangoDB is a multi-model database supporting documents, graphs, and key-value.
+
+### Configuration
+
+- **Host**: ArangoDB server URL
+- **Port**: HTTP port (default 8529)
+- **Database**: Database name
+- **Username**: Authentication username
+- **Password**: Authentication password
+
+### Query Format
+
+ArangoDB uses AQL:
+
+```aql
+FOR user IN users
+  FILTER user.age >= 18
+  SORT user.created_date DESC
+  LIMIT 100
+  RETURN {
+    name: user.name,
+    email: user.email,
+    age: user.age
+  }
+```
+
+---
+
+## DGraph
+
+DGraph is a distributed graph database.
+
+### Configuration
+
+- **URL**: DGraph Alpha server URL
+- **API Key**: Authentication token (if required)
+
+### Query Format
+
+Uses GraphQL+- query language:
+
+```graphql
+{
+  users(func: eq(age, 30)) {
+    uid
+    name
+    email
+    friends {
+      name
+    }
+  }
+}
+```
+
+---
+
+## Query Tips
+
+<AccordionGroup>
+  <Accordion title="MongoDB Performance">
+    - Use indexes on fields in your query filters
+    - Limit result sets with `limit` parameter
+    - Use projections (`fields`) to return only needed columns
+    - For large datasets, use aggregation with `$match` first
+  </Accordion>
+  
+  <Accordion title="Elasticsearch Best Practices">
+    - Use `size: 0` for aggregation-only queries
+    - Filter before aggregating when possible
+    - Use date math for time-based queries (e.g., `now-7d`)
+    - Specify index patterns to limit search scope
+  </Accordion>
+  
+  <Accordion title="Cassandra Optimization">
+    - Always include partition key in WHERE clause
+    - Use ALLOW FILTERING sparingly (performance impact)
+    - Design queries around table structure (query-first design)
+    - Limit result sets appropriately
+  </Accordion>
+</AccordionGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="MongoDB Connection Issues">
+    **Problem**: Cannot connect to MongoDB
+    
+    **Solutions**:
+    - Verify connection string format
+    - Check if IP is whitelisted (MongoDB Atlas)
+    - Ensure correct authentication database
+    - Test connection with MongoDB client first
+  </Accordion>
+  
+  <Accordion title="Elasticsearch Timeout">
+    **Problem**: Queries timeout on large datasets
+    
+    **Solutions**:
+    - Reduce query size/scope
+    - Use scroll API for large exports
+    - Increase timeout setting
+    - Optimize index structure
+  </Accordion>
+  
+  <Accordion title="Cassandra Query Errors">
+    **Problem**: "Cannot execute this query as it might involve data filtering"
+    
+    **Solutions**:
+    - Include partition key in WHERE clause
+    - Create appropriate secondary indexes
+    - Use ALLOW FILTERING (with caution)
+    - Redesign table for query pattern
+  </Accordion>
+</AccordionGroup>
+
+## Schema Browser
+
+For NoSQL databases:
+
+- **MongoDB**: Shows collections and sample fields
+- **Elasticsearch**: Shows indices and field mappings
+- **Cassandra**: Shows keyspace tables and columns
+
+The schema browser helps you explore available data structures.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Cloud Services" icon="cloud" href="/data-sources/cloud-services">
+    Connect to cloud data warehouses
+  </Card>
+  <Card title="Custom Sources" icon="code" href="/data-sources/custom-sources">
+    Use Python, JSON, and CSV sources
+  </Card>
+</CardGroup>

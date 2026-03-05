@@ -1,0 +1,282 @@
+---
+title: Configuration
+description: Configure Redash using environment variables
+---
+
+Redash is configured using environment variables. All environment variables are prefixed with `REDASH_` to avoid conflicts with other applications.
+
+## Core Configuration
+
+### Database
+
+Redash stores queries, dashboards, and metadata in a PostgreSQL database.
+
+```bash
+REDASH_DATABASE_URL=postgresql://user:password@host:5432/database
+```
+
+**Connection Pool Settings:**
+
+- `SQLALCHEMY_POOL_SIZE` - Number of connections to keep in the pool
+- `SQLALCHEMY_MAX_OVERFLOW` - Max overflow connections beyond pool_size
+- `SQLALCHEMY_DISABLE_POOL` - Disable connection pooling (default: `false`)
+- `SQLALCHEMY_ENABLE_POOL_PRE_PING` - Enable connection health checks (default: `false`)
+
+### Redis
+
+Redash uses Redis for caching, job queues, and session storage.
+
+```bash
+REDASH_REDIS_URL=redis://localhost:6379/0
+RQ_REDIS_URL=redis://localhost:6379/0  # Can be different from main Redis
+```
+
+### Secret Keys
+
+<Warning>
+  **Required**: You must set `REDASH_COOKIE_SECRET` before running Redash.
+</Warning>
+
+```bash
+REDASH_COOKIE_SECRET=<random-string>
+REDASH_SECRET_KEY=<random-string>  # Used for encrypting data source credentials
+```
+
+Generate secure secrets using:
+
+```bash
+python -c 'import secrets; print(secrets.token_hex(32))'
+```
+
+The `REDASH_SECRET_KEY` is used to encrypt data source connection options. If not set, it defaults to `REDASH_COOKIE_SECRET`.
+
+## Query Execution
+
+### Time Limits
+
+```bash
+REDASH_ADHOC_QUERY_TIME_LIMIT=3600      # Seconds for ad-hoc queries (-1 for no limit)
+REDASH_SCHEDULED_QUERY_TIME_LIMIT=-1    # Seconds for scheduled queries
+```
+
+### Query Results Cleanup
+
+Periodically remove unused query results to save storage:
+
+```bash
+REDASH_QUERY_RESULTS_CLEANUP_ENABLED=true
+REDASH_QUERY_RESULTS_CLEANUP_COUNT=100        # Max results to clean per run
+REDASH_QUERY_RESULTS_CLEANUP_MAX_AGE=7        # Days to keep unused results
+```
+
+### Query Results TTL
+
+Expire query results after a certain time:
+
+```bash
+REDASH_QUERY_RESULTS_EXPIRED_TTL_ENABLED=false
+REDASH_QUERY_RESULTS_EXPIRED_TTL=86400        # Seconds (default: 24 hours)
+```
+
+## Schema Refresh
+
+Control how often data source schemas are refreshed:
+
+```bash
+REDASH_SCHEMAS_REFRESH_SCHEDULE=30      # Minutes between refreshes
+REDASH_SCHEMAS_REFRESH_TIMEOUT=300      # Timeout in seconds
+REDASH_SCHEMA_RUN_TABLE_SIZE_CALCULATIONS=false
+```
+
+## Query Runners
+
+### Enabling Query Runners
+
+By default, all query runners are enabled. You can customize this:
+
+```bash
+# Enable only specific query runners
+REDASH_ENABLED_QUERY_RUNNERS=redash.query_runner.pg,redash.query_runner.mysql
+
+# Add additional query runners
+REDASH_ADDITIONAL_QUERY_RUNNERS=my_custom.query_runner
+
+# Disable specific query runners
+REDASH_DISABLED_QUERY_RUNNERS=redash.query_runner.mongodb
+```
+
+### Private Address Blocking
+
+Prevent the JSON query runner from accessing private network addresses:
+
+```bash
+REDASH_ENFORCE_PRIVATE_IP_BLOCK=true
+```
+
+## Destinations
+
+Configure alert destinations (Slack, email, webhooks, etc.):
+
+```bash
+REDASH_ENABLED_DESTINATIONS=redash.destinations.email,redash.destinations.slack
+REDASH_ADDITIONAL_DESTINATIONS=my_custom.destination
+```
+
+Default destinations include:
+- email
+- slack
+- webhook
+- discord
+- mattermost
+- chatwork
+- pagerduty
+- hangoutschat
+- microsoft_teams_webhook
+- asana
+- webex
+- datadog
+
+## Rate Limiting
+
+Protect your Redash instance from brute force attacks:
+
+```bash
+REDASH_RATELIMIT_ENABLED=true
+REDASH_THROTTLE_LOGIN_PATTERN=50/hour
+REDASH_THROTTLE_PASS_RESET_PATTERN=10/hour
+REDASH_LIMITER_STORAGE=redis://localhost:6379/0
+```
+
+## Jobs
+
+Configure background job settings:
+
+```bash
+REDASH_JOB_EXPIRY_TIME=43200              # Seconds (default: 12 hours)
+REDASH_JOB_DEFAULT_FAILURE_TTL=604800     # Seconds (default: 7 days)
+```
+
+## UI Configuration
+
+### Refresh Intervals
+
+Customize available refresh intervals for dashboards and queries:
+
+```bash
+REDASH_DASHBOARD_REFRESH_INTERVALS=60,300,600,1800,3600,43200,86400
+REDASH_QUERY_REFRESH_INTERVALS=60,300,600,900,1800,3600,7200,10800,14400,18000,21600,25200,28800,32400,36000,39600,43200,86400,604800,1209600,2592000
+```
+
+### Pagination
+
+```bash
+REDASH_PAGE_SIZE=20
+REDASH_PAGE_SIZE_OPTIONS=5,10,20,50,100
+```
+
+### Table Cell Limits
+
+```bash
+REDASH_TABLE_CELL_MAX_JSON_SIZE=50000
+```
+
+## Features
+
+Enable or disable specific features:
+
+```bash
+REDASH_VERSION_CHECK=true
+REDASH_FEATURE_DISABLE_REFRESH_QUERIES=false
+REDASH_FEATURE_SHOW_QUERY_RESULTS_COUNT=true
+REDASH_FEATURE_ALLOW_CUSTOM_JS_VISUALIZATIONS=true
+REDASH_FEATURE_AUTO_PUBLISH_NAMED_QUERIES=true
+REDASH_FEATURE_EXTENDED_ALERT_OPTIONS=false
+```
+
+## Static Assets
+
+Configure where Redash serves static files from:
+
+```bash
+REDASH_STATIC_ASSETS_PATH=../client/dist/
+REDASH_FLASK_TEMPLATE_PATH=../client/dist/
+```
+
+## Proxy Configuration
+
+If Redash is behind a proxy:
+
+```bash
+REDASH_PROXIES_COUNT=1
+```
+
+## External Integrations
+
+### Sentry
+
+Enable error tracking with Sentry:
+
+```bash
+REDASH_SENTRY_DSN=https://...@sentry.io/...
+REDASH_SENTRY_ENVIRONMENT=production
+```
+
+### Event Reporting Webhooks
+
+```bash
+REDASH_EVENT_REPORTING_WEBHOOKS=https://example.com/webhook1,https://example.com/webhook2
+```
+
+## Advanced Settings
+
+### User Input
+
+Allow scripts in user input (use with caution):
+
+```bash
+REDASH_ALLOW_SCRIPTS_IN_USER_INPUT=false
+```
+
+### Parameters in Embeds
+
+<Warning>
+  This setting is deprecated. See the [discussion](https://discuss.redash.io/t/support-for-parameters-in-embedded-visualizations/3337) for details.
+</Warning>
+
+```bash
+REDASH_ALLOW_PARAMETERS_IN_EMBEDS=false
+```
+
+### Blocked Email Domains
+
+Prevent users from signing up with specific email domains:
+
+```bash
+REDASH_BLOCKED_DOMAINS=qq.com,example.com
+```
+
+## Configuration Examples
+
+### Development
+
+```bash
+REDASH_COOKIE_SECRET=dev-secret
+REDASH_DATABASE_URL=postgresql://postgres@localhost/redash
+REDASH_REDIS_URL=redis://localhost:6379/0
+REDASH_LOG_LEVEL=DEBUG
+REDASH_LOG_STDOUT=true
+```
+
+### Production
+
+```bash
+REDASH_COOKIE_SECRET=<secure-random-string>
+REDASH_SECRET_KEY=<secure-random-string>
+REDASH_DATABASE_URL=postgresql://redash:password@db:5432/redash
+REDASH_REDIS_URL=redis://redis:6379/0
+REDASH_ENFORCE_HTTPS=true
+REDASH_ENFORCE_CSRF=true
+REDASH_LOG_LEVEL=INFO
+REDASH_STATSD_HOST=statsd
+REDASH_SENTRY_DSN=https://...@sentry.io/...
+```

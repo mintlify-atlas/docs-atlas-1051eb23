@@ -1,0 +1,413 @@
+---
+title: CSV
+description: Query CSV files from URLs in Redash
+---
+
+## Overview
+
+The CSV data source allows you to query CSV (Comma-Separated Values) files from URLs. This is useful for analyzing data from file servers, cloud storage, or any publicly accessible CSV files.
+
+## Setup
+
+### Prerequisites
+
+- CSV files accessible via HTTP/HTTPS URLs
+- (Optional) Network access to private URLs if querying internal resources
+
+### Configuration
+
+The CSV data source requires no configuration. Simply create a CSV data source and start writing queries.
+
+```json
+{}
+```
+
+## Query Syntax
+
+Queries are written in YAML format:
+
+```yaml
+url: https://example.com/data.csv
+user-agent: MyBot/1.0
+```
+
+### Simple URL Query
+
+```yaml
+url: https://example.com/sales-data.csv
+```
+
+Or even simpler (if you don't need extra parameters):
+
+```
+https://example.com/sales-data.csv
+```
+
+## Query Parameters
+
+<ParamField path="url" type="string" required>
+  The URL of the CSV file to fetch
+</ParamField>
+
+<ParamField path="user-agent" type="string">
+  Custom User-Agent header for the HTTP request
+</ParamField>
+
+### Additional pandas read_csv Parameters
+
+You can pass any parameter supported by [pandas.read_csv()](https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html):
+
+<ParamField path="sep" type="string" default=",">
+  Delimiter to use (e.g., `\t` for tab-separated, `;` for semicolon)
+</ParamField>
+
+<ParamField path="encoding" type="string">
+  File encoding (e.g., `utf-8`, `latin1`, `iso-8859-1`)
+</ParamField>
+
+<ParamField path="skiprows" type="integer or array">
+  Line numbers to skip (0-indexed) or number of lines to skip at start of file
+</ParamField>
+
+<ParamField path="header" type="integer">
+  Row number to use as column names (0-indexed). Set to `null` for no header.
+</ParamField>
+
+<ParamField path="names" type="array">
+  List of column names to use (for files without headers)
+</ParamField>
+
+<ParamField path="usecols" type="array">
+  List of columns to read (by name or index)
+</ParamField>
+
+<ParamField path="dtype" type="object">
+  Data type specification for columns
+</ParamField>
+
+<ParamField path="parse_dates" type="boolean or array">
+  Columns to parse as dates
+</ParamField>
+
+<ParamField path="decimal" type="string" default=".">
+  Character to recognize as decimal point
+</ParamField>
+
+<ParamField path="thousands" type="string">
+  Character to recognize as thousands separator
+</ParamField>
+
+## Query Examples
+
+### Basic CSV File
+
+```yaml
+url: https://data.example.com/sales.csv
+user-agent: RedashBot/1.0
+```
+
+### Tab-Separated File
+
+```yaml
+url: https://data.example.com/report.tsv
+sep: "\t"
+```
+
+### CSV with Different Encoding
+
+```yaml
+url: https://data.example.com/international-data.csv
+encoding: iso-8859-1
+```
+
+### Skip Header Rows
+
+```yaml
+url: https://data.example.com/report.csv
+skiprows: 3
+```
+
+### Semicolon-Separated (European Format)
+
+```yaml
+url: https://data.example.com/european-data.csv
+sep: ";"
+decimal: ","
+```
+
+### Select Specific Columns
+
+```yaml
+url: https://data.example.com/large-dataset.csv
+usecols:
+  - id
+  - name
+  - revenue
+  - date
+```
+
+### Parse Date Columns
+
+```yaml
+url: https://data.example.com/timeseries.csv
+parse_dates:
+  - created_at
+  - updated_at
+```
+
+### File Without Headers
+
+```yaml
+url: https://data.example.com/no-header.csv
+header: null
+names:
+  - id
+  - product_name
+  - price
+  - quantity
+```
+
+### Complex Configuration
+
+```yaml
+url: https://data.example.com/financial-data.csv
+sep: ";"
+encoding: utf-8
+decimal: ","
+thousands: "."
+skiprows: 2
+parse_dates:
+  - transaction_date
+usecols:
+  - transaction_date
+  - amount
+  - customer_id
+  - status
+```
+
+## Data Type Detection
+
+The CSV data source automatically detects and converts data types using pandas:
+
+- **Integer**: Whole numbers → `TYPE_INTEGER`
+- **Float**: Decimal numbers → `TYPE_FLOAT`
+- **DateTime**: Date/time values → `TYPE_DATETIME` (formatted as `YYYY-MM-DD HH:MM:SS`)
+- **Boolean**: True/false values → `TYPE_BOOLEAN`
+- **String**: All other values → `TYPE_STRING`
+
+Null values (`NaN` in pandas) are converted to `NULL` in results.
+
+## Use Cases
+
+### Public Open Data
+
+Query open datasets from government sources, research institutions, or data portals:
+
+```yaml
+url: https://data.gov/datasets/population.csv
+```
+
+### Cloud Storage
+
+Access CSV files stored in cloud storage with public URLs (S3, Google Cloud Storage, Azure Blob):
+
+```yaml
+url: https://storage.googleapis.com/my-bucket/reports/monthly-sales.csv
+```
+
+### File Servers
+
+Query CSV exports from internal file servers or network shares exposed via HTTP:
+
+```yaml
+url: https://files.company.com/exports/daily-metrics.csv
+user-agent: Redash/Internal
+```
+
+### Data Exports
+
+Analyze one-time or periodic data exports from systems that don't have direct database access:
+
+```yaml
+url: https://exports.crm.com/contacts_2024-03-05.csv
+```
+
+### ETL Landing Zone
+
+Query files in an ETL landing zone before they're processed into a data warehouse:
+
+```yaml
+url: https://etl.example.com/landing/raw_events.csv
+```
+
+### Third-Party Data Feeds
+
+Access CSV data feeds from partners or vendors:
+
+```yaml
+url: https://partner-api.example.com/feed/transactions.csv
+user-agent: CompanyName-Redash
+```
+
+## Practical Examples
+
+### GitHub Repository Data
+
+```yaml
+url: https://raw.githubusercontent.com/user/repo/main/data/stats.csv
+```
+
+### Google Sheets as CSV
+
+```yaml
+url: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/export?format=csv&gid=0
+```
+
+### S3 Public Bucket
+
+```yaml
+url: https://my-bucket.s3.amazonaws.com/data/daily-report.csv
+```
+
+### Kaggle Dataset
+
+```yaml
+url: https://raw.githubusercontent.com/kaggle/kaggle-datasets/main/dataset.csv
+```
+
+## Security Considerations
+
+### Private Address Protection
+
+The CSV data source blocks requests to private IP addresses to prevent Server-Side Request Forgery (SSRF) attacks:
+
+```yaml
+url: http://192.168.1.1/internal-data.csv
+```
+
+**Result:** Error: "Can't query private addresses."
+
+This protects against:
+- Internal network scanning
+- Access to localhost services
+- Cloud metadata endpoints (e.g., `http://169.254.169.254`)
+
+### User-Agent Header
+
+Some servers require or recommend a custom User-Agent:
+
+```yaml
+url: https://api.data.gov/datasets/export.csv
+user-agent: MyCompany-Analytics/1.0 (contact@company.com)
+```
+
+## Tips
+
+- **URL Encoding**: Ensure URLs with special characters are properly encoded
+- **File Size**: Large CSV files (>100MB) may cause timeouts or memory issues
+- **Caching**: Enable query result caching for CSV files that don't change frequently
+- **Google Sheets Export**: Export Google Sheets as CSV by adding `/export?format=csv` to the share URL
+- **S3 Pre-signed URLs**: Use pre-signed URLs for private S3 buckets
+- **Compression**: Pandas can automatically handle gzip-compressed CSV files (`.csv.gz`)
+
+## Troubleshooting
+
+### "Can't query private addresses"
+
+You're trying to query a private IP address or localhost. Use a public URL or host the CSV on an accessible server.
+
+### Connection Timeout
+
+If the URL is slow or unresponsive:
+- Verify the URL is accessible
+- Check network connectivity from the Redash server
+- Consider downloading and hosting the file closer to Redash
+
+### Encoding Errors
+
+If you see garbled characters:
+
+```yaml
+url: https://example.com/data.csv
+encoding: latin1  # or utf-8, iso-8859-1, etc.
+```
+
+### Wrong Delimiter
+
+If columns aren't parsed correctly:
+
+```yaml
+url: https://example.com/data.csv
+sep: ";"  # or "\t" for tabs, "|" for pipes
+```
+
+### Date Parsing Issues
+
+If dates aren't recognized:
+
+```yaml
+url: https://example.com/data.csv
+parse_dates:
+  - date_column
+```
+
+Or specify the date format:
+
+```yaml
+url: https://example.com/data.csv
+parse_dates:
+  - date_column
+date_parser: lambda x: pd.to_datetime(x, format='%Y%m%d')
+```
+
+### Memory Errors
+
+For very large files:
+- Reduce the dataset size at the source
+- Use `usecols` to select only needed columns
+- Use `skiprows` to skip unnecessary rows
+- Consider using `nrows` to limit rows (pandas parameter)
+
+```yaml
+url: https://example.com/huge-file.csv
+usecols:
+  - id
+  - important_field
+nrows: 10000
+```
+
+### Empty Results
+
+If the query returns no data:
+- Verify the URL is correct and accessible
+- Check that the file contains data
+- Try opening the URL in a browser to inspect the contents
+- Verify the `skiprows` or `header` settings aren't skipping all data
+
+## Limitations
+
+- Only supports CSV files accessible via HTTP/HTTPS
+- Cannot query local files or file systems
+- No support for authentication (use public URLs or pre-signed URLs)
+- Large files may cause memory or timeout issues
+- Private IP addresses are blocked for security
+
+## Advanced: pandas read_csv Parameters
+
+The CSV query runner uses pandas' `read_csv()` function. Almost any parameter from the [pandas documentation](https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html) can be used:
+
+```yaml
+url: https://example.com/complex.csv
+sep: "|"
+quotechar: '"'
+escapechar: "\\"
+comment: "#"
+skip_blank_lines: true
+na_values:
+  - N/A
+  - null
+  - -
+keep_default_na: false
+```
+
+Refer to the pandas documentation for the complete list of supported parameters.

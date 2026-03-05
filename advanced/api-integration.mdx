@@ -1,0 +1,387 @@
+---
+title: "API Integration"
+description: "Automate Redash workflows using the REST API"
+---
+
+## Overview
+
+Redash provides a comprehensive REST API for automating query execution, managing dashboards, and integrating with external systems. All API endpoints follow the pattern `/api/<resource>` and support JSON payloads.
+
+## Authentication
+
+Use API keys to authenticate requests. You can generate API keys for users or queries.
+
+### User API Key
+
+Generate a user API key from your profile settings:
+
+```bash
+curl "https://your-redash.example.com/api/queries" \
+  -H "Authorization: Key YOUR_API_KEY"
+```
+
+### Query API Key
+
+Each query can have its own API key for sharing results without exposing your user credentials.
+
+```bash
+# Regenerate query API key
+curl -X POST "https://your-redash.example.com/api/queries/<query_id>/regenerate_api_key" \
+  -H "Authorization: Key YOUR_API_KEY"
+```
+
+## Core API Endpoints
+
+### Queries
+
+#### List All Queries
+
+```bash
+GET /api/queries
+```
+
+Supports pagination and search:
+
+```bash
+curl "https://your-redash.example.com/api/queries?page=1&page_size=25&q=sales" \
+  -H "Authorization: Key YOUR_API_KEY"
+```
+
+#### Get Query Details
+
+```bash
+GET /api/queries/<query_id>
+```
+
+#### Execute a Query
+
+```bash
+POST /api/queries/<query_id>/results
+```
+
+Request body:
+
+```json
+{
+  "parameters": {
+    "start_date": "2024-01-01",
+    "status": "active"
+  },
+  "max_age": 0
+}
+```
+
+Parameters:
+- `parameters`: Query parameter values (optional)
+- `max_age`: Maximum age of cached results in seconds. Set to `0` to force fresh execution, `-1` to use any cached result
+
+#### Refresh a Query
+
+```bash
+POST /api/queries/<query_id>/refresh
+```
+
+Forces query execution and returns the job ID.
+
+### Query Results
+
+#### Get Query Results
+
+```bash
+GET /api/queries/<query_id>/results
+GET /api/queries/<query_id>/results.<filetype>
+```
+
+Supported file types:
+- `json` (default)
+- `csv`
+- `xlsx`
+- `tsv`
+
+Example:
+
+```bash
+curl "https://your-redash.example.com/api/queries/123/results.csv" \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -o results.csv
+```
+
+#### Execute Ad-hoc Query
+
+```bash
+POST /api/query_results
+```
+
+Request body:
+
+```json
+{
+  "query": "SELECT * FROM users WHERE created_at > '2024-01-01'",
+  "data_source_id": 1,
+  "max_age": 0
+}
+```
+
+#### Check Job Status
+
+```bash
+GET /api/jobs/<job_id>
+```
+
+Monitor query execution status:
+
+```python
+import requests
+import time
+
+response = requests.post(
+    "https://your-redash.example.com/api/queries/123/results",
+    headers={"Authorization": "Key YOUR_API_KEY"},
+    json={"max_age": 0}
+)
+
+job = response.json()["job"]
+
+while job["status"] not in [3, 4]:  # 3=success, 4=error
+    time.sleep(1)
+    job = requests.get(
+        f"https://your-redash.example.com/api/jobs/{job['id']}",
+        headers={"Authorization": "Key YOUR_API_KEY"}
+    ).json()["job"]
+
+if job["status"] == 3:
+    result = job["query_result"]
+    print(result["data"])
+```
+
+### Dashboards
+
+#### List Dashboards
+
+```bash
+GET /api/dashboards
+```
+
+#### Get Dashboard
+
+```bash
+GET /api/dashboards/<dashboard_id>
+```
+
+#### Create Dashboard
+
+```bash
+POST /api/dashboards
+```
+
+Request body:
+
+```json
+{
+  "name": "Sales Dashboard",
+  "tags": ["sales", "analytics"]
+}
+```
+
+#### Share Dashboard
+
+```bash
+POST /api/dashboards/<dashboard_id>/share
+```
+
+Generates a public sharing token.
+
+### Data Sources
+
+#### List Data Sources
+
+```bash
+GET /api/data_sources
+```
+
+#### Get Data Source Schema
+
+```bash
+GET /api/data_sources/<data_source_id>/schema
+```
+
+Returns table and column information.
+
+#### Test Data Source Connection
+
+```bash
+POST /api/data_sources/<data_source_id>/test
+```
+
+### Visualizations
+
+#### List Visualizations
+
+```bash
+GET /api/visualizations
+```
+
+#### Get Visualization
+
+```bash
+GET /api/visualizations/<visualization_id>
+```
+
+## Automation Examples
+
+### Scheduled Report Generation
+
+```python
+import requests
+from datetime import datetime
+
+API_KEY = "YOUR_API_KEY"
+BASE_URL = "https://your-redash.example.com"
+
+def generate_report(query_id):
+    # Execute query
+    response = requests.post(
+        f"{BASE_URL}/api/queries/{query_id}/results",
+        headers={"Authorization": f"Key {API_KEY}"},
+        json={"max_age": 0}
+    )
+    
+    # Download as CSV
+    csv_response = requests.get(
+        f"{BASE_URL}/api/queries/{query_id}/results.csv",
+        headers={"Authorization": f"Key {API_KEY}"}
+    )
+    
+    # Save file
+    filename = f"report_{datetime.now().strftime('%Y%m%d')}.csv"
+    with open(filename, 'wb') as f:
+        f.write(csv_response.content)
+    
+    return filename
+
+generate_report(123)
+```
+
+### Bulk Query Execution
+
+```python
+import requests
+import concurrent.futures
+
+API_KEY = "YOUR_API_KEY"
+BASE_URL = "https://your-redash.example.com"
+
+def execute_query(query_id, parameters):
+    response = requests.post(
+        f"{BASE_URL}/api/queries/{query_id}/results",
+        headers={"Authorization": f"Key {API_KEY}"},
+        json={
+            "parameters": parameters,
+            "max_age": 0
+        }
+    )
+    return response.json()
+
+query_configs = [
+    {"query_id": 1, "parameters": {"region": "US"}},
+    {"query_id": 2, "parameters": {"region": "EU"}},
+    {"query_id": 3, "parameters": {"region": "APAC"}}
+]
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    futures = [
+        executor.submit(execute_query, config["query_id"], config["parameters"])
+        for config in query_configs
+    ]
+    results = [f.result() for f in concurrent.futures.as_completed(futures)]
+```
+
+### Dashboard Data Export
+
+```python
+import requests
+import json
+
+API_KEY = "YOUR_API_KEY"
+BASE_URL = "https://your-redash.example.com"
+
+def export_dashboard_data(dashboard_id):
+    # Get dashboard details
+    dashboard = requests.get(
+        f"{BASE_URL}/api/dashboards/{dashboard_id}",
+        headers={"Authorization": f"Key {API_KEY}"}
+    ).json()
+    
+    results = {}
+    
+    # Execute all queries in dashboard widgets
+    for widget in dashboard["widgets"]:
+        if widget.get("visualization"):
+            query_id = widget["visualization"]["query"]["id"]
+            
+            result = requests.post(
+                f"{BASE_URL}/api/queries/{query_id}/results",
+                headers={"Authorization": f"Key {API_KEY}"},
+                json={"max_age": 3600}  # Use cached results if < 1 hour old
+            ).json()
+            
+            results[widget["id"]] = result
+    
+    return results
+
+data = export_dashboard_data(5)
+with open('dashboard_export.json', 'w') as f:
+    json.dump(data, f, indent=2)
+```
+
+## Error Handling
+
+API responses include standard HTTP status codes:
+
+- `200` - Success
+- `400` - Bad request (invalid parameters)
+- `401` - Unauthorized (invalid API key)
+- `403` - Forbidden (insufficient permissions)
+- `404` - Resource not found
+
+Example error response:
+
+```json
+{
+  "message": "Missing parameter value for: start_date"
+}
+```
+
+## Rate Limiting
+
+<Warning>
+Be mindful of query execution frequency. Running too many queries simultaneously can impact database performance.
+</Warning>
+
+Best practices:
+- Use `max_age` parameter to leverage cached results
+- Implement exponential backoff for retries
+- Limit concurrent query execution
+
+## CORS Configuration
+
+For browser-based integrations, configure CORS in your Redash settings:
+
+```python
+ACCESS_CONTROL_ALLOW_ORIGIN = ["https://your-app.example.com"]
+ACCESS_CONTROL_ALLOW_CREDENTIALS = True
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="Embedding" icon="code" href="/advanced/embedding">
+  Embed visualizations in external applications
+</Card>
+
+<Card title="Python Queries" icon="python" href="/advanced/python-queries">
+  Execute Python scripts as data sources
+</Card>
+
+</CardGroup>

@@ -1,0 +1,435 @@
+---
+title: SQL Databases
+description: Configure connections to SQL databases including PostgreSQL, MySQL, SQL Server, and Oracle
+---
+
+Redash supports a wide range of SQL databases. This guide covers the most common SQL database configurations.
+
+## PostgreSQL
+
+PostgreSQL is a powerful, open-source relational database with advanced features.
+
+### Configuration
+
+<ParamField path="host" type="string" default="127.0.0.1">
+  PostgreSQL server hostname or IP address
+</ParamField>
+
+<ParamField path="port" type="number" default="5432">
+  PostgreSQL server port
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Database username
+</ParamField>
+
+<ParamField path="password" type="string">
+  Database password (stored encrypted)
+</ParamField>
+
+<ParamField path="dbname" type="string" required>
+  Database name to connect to
+</ParamField>
+
+<ParamField path="dsn" type="string" default="application_name=redash">
+  Additional connection parameters (e.g., `application_name=redash`, `connect_timeout=10`)
+</ParamField>
+
+### SSL Configuration
+
+<ParamField path="sslmode" type="string" default="prefer">
+  SSL connection mode:
+  - `disable` - No SSL
+  - `allow` - Try SSL, fall back to non-SSL
+  - `prefer` - Try SSL first
+  - `require` - Require SSL
+  - `verify-ca` - Require SSL and verify certificate
+  - `verify-full` - Require SSL and verify hostname
+</ParamField>
+
+<ParamField path="sslrootcertFile" type="string">
+  Base64-encoded SSL root certificate
+</ParamField>
+
+<ParamField path="sslcertFile" type="string">
+  Base64-encoded SSL client certificate
+</ParamField>
+
+<ParamField path="sslkeyFile" type="string">
+  Base64-encoded SSL client key
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Host: db.example.com
+Port: 5432
+User: redash_user
+Password: ••••••••
+Database Name: analytics
+SSL Mode: prefer
+```
+
+### Read-Only User Setup
+
+```sql
+-- Create read-only user
+CREATE USER redash_readonly WITH PASSWORD 'secure_password';
+
+-- Grant connection
+GRANT CONNECT ON DATABASE analytics TO redash_readonly;
+
+-- Grant schema usage
+GRANT USAGE ON SCHEMA public TO redash_readonly;
+
+-- Grant SELECT on all existing tables
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO redash_readonly;
+
+-- Grant SELECT on future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA public 
+GRANT SELECT ON TABLES TO redash_readonly;
+```
+
+---
+
+## MySQL
+
+MySQL is a popular open-source relational database.
+
+### Configuration
+
+<ParamField path="host" type="string" default="127.0.0.1">
+  MySQL server hostname or IP address
+</ParamField>
+
+<ParamField path="port" type="number" default="3306">
+  MySQL server port
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Database username
+</ParamField>
+
+<ParamField path="passwd" type="string" required>
+  Database password
+</ParamField>
+
+<ParamField path="db" type="string" required>
+  Database name
+</ParamField>
+
+<ParamField path="connect_timeout" type="number" default="60">
+  Connection timeout in seconds
+</ParamField>
+
+<ParamField path="charset" type="string" default="utf8mb4">
+  Character set for the connection
+</ParamField>
+
+<ParamField path="use_unicode" type="boolean" default="true">
+  Enable Unicode support
+</ParamField>
+
+<ParamField path="autocommit" type="boolean" default="false">
+  Enable auto-commit mode
+</ParamField>
+
+### SSL Configuration
+
+<ParamField path="use_ssl" type="boolean">
+  Enable SSL connection
+</ParamField>
+
+<ParamField path="ssl_mode" type="string" default="preferred">
+  SSL mode:
+  - `disabled` - No SSL
+  - `preferred` - Try SSL first
+  - `required` - Require SSL
+  - `verify-ca` - Verify certificate authority
+  - `verify-identity` - Verify server identity
+</ParamField>
+
+<ParamField path="ssl_cacert" type="string">
+  Path to CA certificate file
+</ParamField>
+
+<ParamField path="ssl_cert" type="string">
+  Path to client certificate file
+</ParamField>
+
+<ParamField path="ssl_key" type="string">
+  Path to private key file
+</ParamField>
+
+### Read-Only User Setup
+
+```sql
+-- Create read-only user
+CREATE USER 'redash_readonly'@'%' IDENTIFIED BY 'secure_password';
+
+-- Grant SELECT permission
+GRANT SELECT ON analytics.* TO 'redash_readonly'@'%';
+
+-- Apply changes
+FLUSH PRIVILEGES;
+```
+
+### Amazon RDS MySQL
+
+For Amazon RDS MySQL instances:
+
+- Use the RDS endpoint as the host
+- Port is typically 3306
+- SSL is automatically configured with AWS certificate bundle
+- Enable "Use SSL" in settings
+
+---
+
+## Microsoft SQL Server
+
+Microsoft SQL Server is an enterprise relational database.
+
+### Configuration
+
+<ParamField path="server" type="string" default="127.0.0.1">
+  SQL Server hostname or IP address
+</ParamField>
+
+<ParamField path="port" type="number" default="1433">
+  SQL Server port (appended to server if not 1433)
+</ParamField>
+
+<ParamField path="user" type="string">
+  Database username
+</ParamField>
+
+<ParamField path="password" type="string">
+  Database password
+</ParamField>
+
+<ParamField path="db" type="string" required>
+  Database name
+</ParamField>
+
+<ParamField path="tds_version" type="string" default="7.0">
+  TDS protocol version
+</ParamField>
+
+<ParamField path="charset" type="string" default="UTF-8">
+  Character set encoding
+</ParamField>
+
+### Example Configuration
+
+```yaml
+Server: sqlserver.example.com
+Port: 1433
+User: redash_user
+Password: ••••••••
+Database Name: Analytics
+TDS Version: 7.0
+Character Set: UTF-8
+```
+
+### Read-Only User Setup
+
+```sql
+-- Create login
+CREATE LOGIN redash_readonly WITH PASSWORD = 'SecurePassword123!';
+
+-- Create user in target database
+USE Analytics;
+CREATE USER redash_readonly FOR LOGIN redash_readonly;
+
+-- Grant read-only access
+ALTER ROLE db_datareader ADD MEMBER redash_readonly;
+```
+
+### Windows Authentication
+
+For Windows Authentication, use the domain\username format:
+
+```
+User: DOMAIN\username
+```
+
+---
+
+## Oracle
+
+Oracle Database is an enterprise-grade relational database.
+
+### Configuration
+
+<ParamField path="host" type="string" required>
+  Oracle server hostname or IP address. Use `_useservicename` to use DSN Service Name instead
+</ParamField>
+
+<ParamField path="port" type="number" required>
+  Oracle listener port (typically 1521)
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Database username
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  Database password
+</ParamField>
+
+<ParamField path="servicename" type="string" required>
+  Oracle service name or DSN
+</ParamField>
+
+<ParamField path="encoding" type="string">
+  Character encoding (e.g., `AMERICAN_AMERICA.UTF8`)
+</ParamField>
+
+### Connection Methods
+
+#### Standard Connection
+
+```yaml
+Host: oracle.example.com
+Port: 1521
+User: redash_user
+Password: ••••••••
+Service Name: ORCL
+```
+
+#### Using DSN Service Name
+
+If using a TNS names entry:
+
+```yaml
+Host: _useservicename
+Port: 1521
+User: redash_user
+Password: ••••••••
+Service Name: MY_TNS_ENTRY
+```
+
+### Read-Only User Setup
+
+```sql
+-- Create user
+CREATE USER redash_readonly IDENTIFIED BY secure_password;
+
+-- Grant connection privilege
+GRANT CREATE SESSION TO redash_readonly;
+
+-- Grant read access to specific tables
+GRANT SELECT ON schema.table_name TO redash_readonly;
+
+-- Or grant read access to all tables in schema
+BEGIN
+  FOR t IN (SELECT table_name FROM all_tables WHERE owner = 'SCHEMA_NAME') LOOP
+    EXECUTE IMMEDIATE 'GRANT SELECT ON SCHEMA_NAME.' || t.table_name || ' TO redash_readonly';
+  END LOOP;
+END;
+/
+```
+
+---
+
+## CockroachDB
+
+CockroachDB is a distributed SQL database compatible with PostgreSQL.
+
+### Configuration
+
+Use the same configuration as PostgreSQL. CockroachDB uses the PostgreSQL wire protocol.
+
+```yaml
+Host: cockroach.example.com
+Port: 26257
+User: redash_user
+Password: ••••••••
+Database Name: analytics
+SSL Mode: require
+```
+
+### SSL Certificates
+
+CockroachDB requires SSL in most configurations:
+
+1. Download cluster certificates
+2. Base64 encode the certificates
+3. Add to SSL configuration fields
+
+---
+
+## Additional SQL Databases
+
+### ClickHouse
+
+Fast columnar database for analytics.
+
+```yaml
+Host: clickhouse.example.com
+Port: 8123
+User: default
+Password: ••••••••
+Database: analytics
+```
+
+### Snowflake
+
+See [Cloud Services](/data-sources/cloud-services#snowflake) section.
+
+### Presto/Trino
+
+```yaml
+Host: presto.example.com
+Port: 8080
+Catalog: hive
+Schema: default
+User: redash
+```
+
+## Query Limits
+
+Redash automatically applies query limits to prevent accidentally large result sets:
+
+- PostgreSQL: `LIMIT 1000`
+- MySQL: `LIMIT 1000`
+- SQL Server: `TOP 1000`
+- Oracle: `FETCH NEXT 1000 ROWS ONLY`
+
+Users can override this by explicitly adding their own LIMIT clause.
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Connection Pool Exhausted">
+    If you see connection pool errors:
+    - Reduce concurrent query execution
+    - Increase database connection limits
+    - Add connection pooling settings in DSN parameters
+  </Accordion>
+  
+  <Accordion title="Query Timeout">
+    For long-running queries:
+    - Increase `connect_timeout` setting
+    - Optimize query performance
+    - Add appropriate indexes
+  </Accordion>
+  
+  <Accordion title="Encoding Issues">
+    For character encoding problems:
+    - Set correct `charset` parameter
+    - Ensure database encoding matches
+    - Use UTF-8 when possible
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Writing Queries" icon="code" href="/queries/writing-queries">
+    Start querying your SQL databases
+  </Card>
+  <Card title="NoSQL Databases" icon="table" href="/data-sources/nosql-databases">
+    Configure NoSQL data sources
+  </Card>
+</CardGroup>

@@ -1,0 +1,442 @@
+---
+title: JSON API
+description: Query RESTful JSON APIs and web services in Redash
+---
+
+## Overview
+
+The JSON API data source allows you to query RESTful APIs that return JSON data. This is one of the most flexible data sources in Redash, enabling integration with virtually any web service or API.
+
+## Setup
+
+### Configuration
+
+<ParamField path="base_url" type="string">
+  Base URL for the API (e.g., `https://api.example.com`). This is prepended to all query URLs.
+</ParamField>
+
+<ParamField path="username" type="string">
+  Username for HTTP Basic Authentication (if required by the API)
+</ParamField>
+
+<ParamField path="password" type="string">
+  Password for HTTP Basic Authentication (if required by the API)
+</ParamField>
+
+## Authentication
+
+### No Authentication
+
+For public APIs:
+
+```json
+{
+  "base_url": "https://api.example.com"
+}
+```
+
+### HTTP Basic Authentication
+
+For APIs requiring basic auth:
+
+```json
+{
+  "base_url": "https://api.example.com",
+  "username": "your-username",
+  "password": "your-password"
+}
+```
+
+### Custom Authentication
+
+For token-based or other auth methods, include credentials in the query headers (see Query Structure below).
+
+## Query Syntax
+
+Queries are written in YAML format to describe the HTTP request:
+
+```yaml
+url: /api/endpoint
+method: get
+params:
+  key1: value1
+  key2: value2
+headers:
+  Authorization: Bearer YOUR_TOKEN
+  Content-Type: application/json
+path: data.results
+fields:
+  - id
+  - name
+  - email
+```
+
+## Query Structure
+
+### Required Field
+
+<ParamField path="url" type="string" required>
+  The API endpoint to query. If `base_url` is configured, this is appended to it. Otherwise, use a full URL.
+</ParamField>
+
+### Optional Fields
+
+<ParamField path="method" type="string" default="get">
+  HTTP method: `get` or `post`
+</ParamField>
+
+<ParamField path="params" type="object">
+  URL query parameters as key-value pairs
+</ParamField>
+
+<ParamField path="headers" type="object">
+  HTTP headers to include in the request
+</ParamField>
+
+<ParamField path="data" type="object">
+  Form data to send (for POST requests with `application/x-www-form-urlencoded`)
+</ParamField>
+
+<ParamField path="json" type="object">
+  JSON body to send (for POST requests with `application/json`)
+</ParamField>
+
+<ParamField path="auth" type="array">
+  HTTP Basic auth credentials as `[username, password]` (overrides data source config)
+</ParamField>
+
+<ParamField path="verify" type="boolean">
+  Whether to verify SSL certificates (default: true)
+</ParamField>
+
+<ParamField path="path" type="string">
+  Dot-notation path to the data array in the response (e.g., `data.results.items`)
+</ParamField>
+
+<ParamField path="fields" type="array">
+  List of fields to include in the result. If not specified, all fields are included.
+</ParamField>
+
+<ParamField path="pagination" type="object">
+  Pagination configuration for multi-page results (see Pagination section)
+</ParamField>
+
+## Query Examples
+
+### Simple GET Request
+
+```yaml
+url: /users
+```
+
+### GET with Query Parameters
+
+```yaml
+url: /api/orders
+method: get
+params:
+  status: completed
+  limit: 100
+  start_date: 2024-01-01
+```
+
+### GET with Authentication Header
+
+```yaml
+url: /api/v1/customers
+headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  Accept: application/json
+```
+
+### POST Request with JSON Body
+
+```yaml
+url: /api/search
+method: post
+json:
+  query: "active users"
+  filters:
+    - field: status
+      value: active
+  limit: 50
+```
+
+### Extracting Nested Data
+
+```yaml
+url: /api/v2/reports/sales
+path: response.data.records
+fields:
+  - id
+  - customer_name
+  - total_amount
+  - created_at
+```
+
+### Using Basic Auth (Per-Query)
+
+```yaml
+url: https://api.example.com/protected/resource
+auth: ["username", "password"]
+```
+
+## Pagination
+
+The JSON API data source supports automatic pagination for APIs that spread results across multiple pages.
+
+### URL-Based Pagination
+
+For APIs that return a "next page" URL:
+
+```yaml
+url: /api/items
+pagination:
+  type: url
+  path: _links.next.href
+```
+
+The `path` field uses dot notation to locate the next page URL in the response (default: `_links.next.href`).
+
+**Example API Response:**
+```json
+{
+  "data": [...],
+  "_links": {
+    "next": {
+      "href": "/api/items?page=2"
+    }
+  }
+}
+```
+
+### Token-Based Pagination
+
+For APIs that use pagination tokens:
+
+```yaml
+url: /api/users
+params:
+  page_size: 100
+pagination:
+  type: token
+  fields: [next_page_token, page_token]
+```
+
+The `fields` array specifies `[response_field, request_param]`:
+- `response_field`: Where to find the next page token in the response
+- `request_param`: The query parameter name to send for the next request
+
+**Example API Response:**
+```json
+{
+  "users": [...],
+  "next_page_token": "abc123xyz"
+}
+```
+
+Next request will include: `?page_token=abc123xyz`
+
+## Data Extraction
+
+### Path Navigation
+
+Use dot notation to navigate nested JSON:
+
+```yaml
+url: /api/report
+path: response.data.items
+```
+
+**Input:**
+```json
+{
+  "response": {
+    "data": {
+      "items": [
+        {"id": 1, "name": "Item 1"},
+        {"id": 2, "name": "Item 2"}
+      ]
+    }
+  }
+}
+```
+
+**Output:** Rows containing `id` and `name` fields
+
+### Flattening Nested Objects
+
+Nested objects are automatically flattened:
+
+**Input:**
+```json
+[
+  {
+    "id": 1,
+    "user": {
+      "name": "John",
+      "email": "john@example.com"
+    }
+  }
+]
+```
+
+**Output Columns:** `id`, `user.name`, `user.email`
+
+### Field Selection
+
+Limit returned fields:
+
+```yaml
+url: /api/users
+fields:
+  - id
+  - email
+  - created_at
+```
+
+Only the specified fields (including nested fields like `user.name`) will be included in results.
+
+## Use Cases
+
+### Third-Party Service Integration
+
+Connect to external services like Stripe, Intercom, Zendesk, or any SaaS platform with an API.
+
+### Internal Microservices
+
+Query internal microservices or backend APIs to create operational dashboards.
+
+### Webhook Data Analysis
+
+Query webhook receivers or event logs exposed via JSON APIs.
+
+### IoT and Sensor Data
+
+Pull data from IoT platforms or sensor networks that expose JSON APIs.
+
+### Social Media Analytics
+
+Connect to social media APIs (Twitter, Instagram, etc.) for analytics dashboards.
+
+### Custom Application Backends
+
+Query your own application's API endpoints for user analytics, business metrics, or monitoring.
+
+## Practical Examples
+
+### GitHub API - Repository Stars
+
+```yaml
+url: https://api.github.com/repos/getredash/redash
+fields:
+  - name
+  - stargazers_count
+  - forks_count
+  - open_issues_count
+```
+
+### Stripe API - Recent Charges
+
+```yaml
+url: https://api.stripe.com/v1/charges
+headers:
+  Authorization: Bearer sk_test_...
+params:
+  limit: 100
+path: data
+```
+
+### Custom REST API with Pagination
+
+```yaml
+url: /v1/transactions
+method: get
+params:
+  start_date: 2024-01-01
+  status: completed
+headers:
+  X-API-Key: your-api-key
+path: data.transactions
+pagination:
+  type: url
+  path: pagination.next_url
+```
+
+### Elasticsearch Query
+
+```yaml
+url: https://elasticsearch.example.com:9200/logs/_search
+method: post
+json:
+  query:
+    range:
+      timestamp:
+        gte: "2024-03-01"
+        lte: "2024-03-05"
+  size: 1000
+path: hits.hits
+```
+
+## Data Type Detection
+
+Data types are automatically detected based on JSON value types:
+
+- `string` → `TYPE_STRING`
+- `number` (integer) → `TYPE_INTEGER`
+- `number` (float) → `TYPE_FLOAT`
+- `boolean` → `TYPE_BOOLEAN`
+- `datetime` objects → `TYPE_DATETIME`
+
+## Tips
+
+- Test your API queries in a tool like Postman before writing them in YAML
+- Use the `verify: false` option only for development/testing with self-signed certificates
+- The `path` parameter is crucial for APIs that wrap data in metadata
+- Pagination automatically fetches all pages, which can be slow for large datasets
+- Use `fields` to reduce payload size and improve query performance
+- Headers are case-insensitive but commonly written as `Authorization`, `Content-Type`, etc.
+
+## Troubleshooting
+
+### "Query must include 'url' option"
+
+Ensure your YAML includes a `url` field.
+
+### "Query is empty"
+
+Check that your query isn't just whitespace. YAML requires proper formatting.
+
+### "Only GET or POST methods are allowed"
+
+The data source only supports `method: get` or `method: post`.
+
+### "Couldn't find path X in response"
+
+Verify the `path` value matches the actual JSON structure. Test by removing the path to see the full response.
+
+### SSL Certificate Errors
+
+For development environments with self-signed certificates:
+```yaml
+url: https://localhost:8000/api/data
+verify: false
+```
+
+### Pagination Infinite Loop
+
+If using token pagination, ensure the token field name is correct. The system detects unchanged tokens to prevent infinite loops.
+
+### Empty Results
+
+- Check that the API is returning data
+- Verify authentication credentials
+- Test the URL directly in a browser or API client
+- Ensure the `path` correctly points to the data array
+
+## Security Notes
+
+- API keys and tokens in headers are stored securely by Redash
+- Use query-level `auth` only when different from the data source configuration
+- Be cautious with `verify: false` - only use in trusted development environments
+- Consider using data source-level authentication when possible for better security management

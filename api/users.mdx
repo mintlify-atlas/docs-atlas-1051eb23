@@ -1,0 +1,537 @@
+---
+title: Users
+description: Manage user accounts and permissions
+---
+
+## List Users
+
+Retrieve a paginated list of users.
+
+```bash
+GET /api/users
+```
+
+### Query Parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number to retrieve
+</ParamField>
+
+<ParamField query="page_size" type="number" default="25">
+  Number of users per page (max: 250)
+</ParamField>
+
+<ParamField query="q" type="string">
+  Search term (searches name and email)
+</ParamField>
+
+<ParamField query="order" type="string">
+  Sort order. Options: `name`, `-name`, `created_at`, `-created_at`, `active_at`, `-active_at`
+</ParamField>
+
+<ParamField query="disabled" type="boolean" default="false">
+  Show disabled users instead of active users
+</ParamField>
+
+<ParamField query="pending" type="boolean">
+  Filter by invitation status (true for pending, false for active, omit for both)
+</ParamField>
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  "https://redash.example.com/api/users?page=1&page_size=25"
+```
+
+### Response
+
+```json
+{
+  "count": 42,
+  "page": 1,
+  "page_size": 25,
+  "results": [
+    {
+      "id": 1,
+      "name": "Admin User",
+      "email": "admin@example.com",
+      "profile_image_url": "https://www.gravatar.com/avatar/...",
+      "groups": [
+        {"id": 1, "name": "admin"},
+        {"id": 2, "name": "default"}
+      ],
+      "is_disabled": false,
+      "is_invitation_pending": false,
+      "active_at": "2024-01-20T15:30:00Z",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-20T15:30:00Z"
+    }
+  ]
+}
+```
+
+## Get User
+
+Retrieve a specific user.
+
+```bash
+GET /api/users/<user_id>
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/users/1
+```
+
+### Response Fields
+
+<ResponseField name="id" type="number">
+  User ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  User's full name
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address
+</ResponseField>
+
+<ResponseField name="profile_image_url" type="string">
+  Gravatar URL for user's profile image
+</ResponseField>
+
+<ResponseField name="groups" type="array">
+  Array of group IDs the user belongs to
+</ResponseField>
+
+<ResponseField name="is_disabled" type="boolean">
+  Whether the user account is disabled
+</ResponseField>
+
+<ResponseField name="is_invitation_pending" type="boolean">
+  Whether the user hasn't accepted their invitation yet
+</ResponseField>
+
+<ResponseField name="is_email_verified" type="boolean">
+  Whether the user's email is verified
+</ResponseField>
+
+<ResponseField name="active_at" type="string">
+  Last activity timestamp (ISO format)
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  Account creation timestamp (ISO format)
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  Last update timestamp (ISO format)
+</ResponseField>
+
+<ResponseField name="api_key" type="string">
+  User's API key (only visible to admins or the user themselves)
+</ResponseField>
+
+### Response (Admin or Own Profile)
+
+```json
+{
+  "id": 1,
+  "name": "Admin User",
+  "email": "admin@example.com",
+  "profile_image_url": "https://www.gravatar.com/avatar/...",
+  "groups": [1, 2],
+  "api_key": "user_api_key_here",
+  "is_disabled": false,
+  "is_invitation_pending": false,
+  "is_email_verified": true,
+  "active_at": "2024-01-20T15:30:00Z",
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-20T15:30:00Z"
+}
+```
+
+## Create User
+
+Create a new user and send an invitation email.
+
+```bash
+POST /api/users
+```
+
+<Warning>
+  This endpoint requires admin permissions.
+</Warning>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  User's full name
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  User's email address (must be unique)
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="no_invite" type="boolean">
+  Skip sending the invitation email
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "email": "john@example.com"
+  }' \
+  https://redash.example.com/api/users
+```
+
+### Response
+
+Returns the created user object plus an invitation link (if `no_invite` was used):
+
+```json
+{
+  "id": 42,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "groups": [2],
+  "is_invitation_pending": true,
+  "invite_link": "https://redash.example.com/invite/abc123token"
+}
+```
+
+<Note>
+  New users are automatically added to the organization's default group. The `invite_link` is only included if email is not configured or `no_invite` parameter is used.
+</Note>
+
+## Update User
+
+Update user details.
+
+```bash
+POST /api/users/<user_id>
+```
+
+### Request Body
+
+<ParamField body="name" type="string">
+  User's full name
+</ParamField>
+
+<ParamField body="email" type="string">
+  User's email address
+</ParamField>
+
+<ParamField body="password" type="string">
+  New password (requires `old_password`)
+</ParamField>
+
+<ParamField body="old_password" type="string">
+  Current password (required when changing password)
+</ParamField>
+
+<ParamField body="group_ids" type="array">
+  Array of group IDs (admin only)
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe Updated",
+    "email": "john.doe@example.com"
+  }' \
+  https://redash.example.com/api/users/42
+```
+
+### Password Change Example
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "old_password": "current_password",
+    "password": "new_secure_password"
+  }' \
+  https://redash.example.com/api/users/42
+```
+
+### Response
+
+Returns the updated user object.
+
+<Note>
+  - Users can update their own profile
+  - Admins can update any user
+  - Only admins can change group membership
+  - Changing email triggers verification if email service is configured
+</Note>
+
+## Delete User
+
+Delete a user account.
+
+```bash
+DELETE /api/users/<user_id>
+```
+
+<Warning>
+  - This endpoint requires admin permissions
+  - Users can only be deleted if their invitation is still pending
+  - Admins cannot delete themselves
+  - For active users, use the Disable endpoint instead
+</Warning>
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/users/42
+```
+
+## Disable User
+
+Disable a user account (prevents login but preserves data).
+
+```bash
+POST /api/users/<user_id>/disable
+```
+
+<Warning>
+  - This endpoint requires admin permissions
+  - Admins cannot disable themselves
+</Warning>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/users/42/disable
+```
+
+### Response
+
+Returns the user object with `is_disabled: true`.
+
+## Enable User
+
+Re-enable a disabled user account.
+
+```bash
+DELETE /api/users/<user_id>/disable
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/users/42/disable
+```
+
+### Response
+
+Returns the user object with `is_disabled: false`.
+
+## Send Invitation
+
+Resend the invitation email to a pending user.
+
+```bash
+POST /api/users/<user_id>/invite
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/users/42/invite
+```
+
+### Response
+
+```json
+{
+  "id": 42,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "invite_link": "https://redash.example.com/invite/xyz789token"
+}
+```
+
+## Reset Password
+
+Send a password reset email to a user.
+
+```bash
+POST /api/users/<user_id>/reset_password
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/users/42/reset_password
+```
+
+### Response
+
+```json
+{
+  "reset_link": "https://redash.example.com/reset/reset_token_here"
+}
+```
+
+<Note>
+  The reset link is only returned if email is not configured. Otherwise, the link is sent via email.
+</Note>
+
+## Regenerate API Key
+
+Generate a new API key for a user.
+
+```bash
+POST /api/users/<user_id>/regenerate_api_key
+```
+
+<Warning>
+  This will invalidate the existing API key immediately.
+</Warning>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/users/42/regenerate_api_key
+```
+
+### Response
+
+Returns the user object with the new `api_key`.
+
+## User Permissions
+
+Users have permissions based on their group memberships:
+
+### Admin Permissions
+
+- Full access to all features
+- Manage users, groups, and data sources
+- View and edit all queries and dashboards
+- Configure organization settings
+
+### Default Permissions
+
+- `create_dashboard` - Create new dashboards
+- `create_query` - Create new queries
+- `edit_dashboard` - Edit own dashboards
+- `edit_query` - Edit own queries
+- `view_query` - View accessible queries
+- `view_source` - View query source code
+- `execute_query` - Execute queries
+- `list_users` - View user list
+- `list_dashboards` - View dashboard list
+- `list_alerts` - View alert list
+- `list_data_sources` - View data source list
+
+### View Only Permissions
+
+Groups can be configured with view-only access to specific data sources, restricting query execution and modification.
+
+## User States
+
+### Pending Invitation
+
+```json
+{
+  "is_invitation_pending": true,
+  "is_disabled": false
+}
+```
+
+User created but hasn't set a password yet.
+
+### Active
+
+```json
+{
+  "is_invitation_pending": false,
+  "is_disabled": false
+}
+```
+
+Normal active user.
+
+### Disabled
+
+```json
+{
+  "is_invitation_pending": false,
+  "is_disabled": true
+}
+```
+
+User account is disabled, cannot log in.
+
+## Email Verification
+
+When email verification is enabled:
+
+1. New users receive verification emails
+2. Email changes trigger re-verification
+3. Unverified users see a warning banner
+4. Some features may be restricted for unverified users
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="User Management">
+    - Use descriptive names ("John Doe" not "jdoe")
+    - Verify email addresses before inviting
+    - Disable users instead of deleting when possible
+    - Review and remove inactive users periodically
+    - Use groups to manage permissions at scale
+  </Accordion>
+
+  <Accordion title="Security">
+    - Require strong passwords (minimum 6 characters)
+    - Rotate API keys periodically
+    - Review user permissions regularly
+    - Disable accounts immediately when employees leave
+    - Use SSO/SAML when available for enterprise setups
+  </Accordion>
+
+  <Accordion title="Onboarding">
+    - Add new users to appropriate groups
+    - Provide training on query writing
+    - Share example queries and dashboards
+    - Document data source schemas and conventions
+  </Accordion>
+
+  <Accordion title="Rate Limiting">
+    Be aware of rate limits:
+    - User creation/updates: 50 per hour
+    - Password resets: Throttled per configuration
+    - Plan API usage accordingly
+  </Accordion>
+</AccordionGroup>

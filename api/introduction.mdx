@@ -1,0 +1,158 @@
+---
+title: API Introduction
+description: Overview of the Redash API for programmatic access to queries, dashboards, and data sources
+---
+
+## Overview
+
+The Redash API provides programmatic access to all Redash functionality, including queries, dashboards, visualizations, data sources, users, and more. The API follows REST conventions and returns JSON responses.
+
+## Base URL
+
+The API is available at:
+
+```
+https://your-redash-instance.com/api
+```
+
+For multi-org instances, the base URL includes the organization slug:
+
+```
+https://your-redash-instance.com/<org_slug>/api
+```
+
+## API Endpoints
+
+All API endpoints are prefixed with `/api`. For example:
+
+- `/api/queries` - Query management
+- `/api/dashboards` - Dashboard management
+- `/api/data_sources` - Data source configuration
+- `/api/users` - User management
+- `/api/query_results` - Query execution and results
+
+## Response Format
+
+All API responses are returned as JSON with appropriate HTTP status codes:
+
+- `200 OK` - Successful request
+- `201 Created` - Resource created successfully
+- `204 No Content` - Successful deletion
+- `400 Bad Request` - Invalid request parameters
+- `401 Unauthorized` - Authentication required
+- `403 Forbidden` - Insufficient permissions
+- `404 Not Found` - Resource not found
+- `409 Conflict` - Version conflict (concurrent modification)
+
+## Pagination
+
+List endpoints support pagination with the following query parameters:
+
+<ParamField query="page" type="number" default="1">
+  Page number to retrieve
+</ParamField>
+
+<ParamField query="page_size" type="number" default="25">
+  Number of items per page (max: 250)
+</ParamField>
+
+Paginated responses include:
+
+```json
+{
+  "count": 100,
+  "page": 1,
+  "page_size": 25,
+  "results": [...]
+}
+```
+
+## Filtering and Search
+
+Many list endpoints support filtering:
+
+<ParamField query="q" type="string">
+  Full-text search term
+</ParamField>
+
+<ParamField query="tags" type="array">
+  Filter by tags (can be specified multiple times)
+</ParamField>
+
+<ParamField query="order" type="string">
+  Sort order. Prefix with `-` for descending. Examples: `name`, `-created_at`, `updated_at`
+</ParamField>
+
+## Rate Limiting
+
+The API implements rate limiting on specific endpoints:
+
+- **User creation/updates**: 50 requests per hour
+- **Password resets**: Throttled per organization settings
+- **Login attempts**: Throttled per organization settings
+
+Rate limit headers are included in responses:
+
+```
+X-RateLimit-Limit: 50
+X-RateLimit-Remaining: 49
+X-RateLimit-Reset: 1234567890
+```
+
+## CORS Support
+
+CORS is configurable through the `ACCESS_CONTROL_ALLOW_ORIGIN` setting. When enabled, appropriate CORS headers are included in responses.
+
+## Error Handling
+
+Error responses include a descriptive message:
+
+```json
+{
+  "message": "Query not found"
+}
+```
+
+For validation errors:
+
+```json
+{
+  "message": "Bad Request",
+  "errors": {
+    "field_name": "Error description"
+  }
+}
+```
+
+## Event Tracking
+
+The API automatically tracks events for analytics and auditing. Events include:
+
+- Object creation, modification, and deletion
+- Query execution
+- Dashboard views
+- User actions
+
+Events are recorded with:
+- User ID or API key
+- Organization ID
+- Timestamp
+- User agent and IP address
+- Action type and object details
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn how to authenticate API requests
+  </Card>
+  <Card title="Queries" icon="database" href="/api/queries">
+    Create and execute queries
+  </Card>
+  <Card title="Dashboards" icon="chart-line" href="/api/dashboards">
+    Manage dashboards and widgets
+  </Card>
+  <Card title="Data Sources" icon="server" href="/api/data-sources">
+    Configure data sources
+  </Card>
+</CardGroup>

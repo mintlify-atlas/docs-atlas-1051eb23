@@ -1,0 +1,486 @@
+---
+title: Custom Data Sources
+description: Use Python, JSON API, CSV, and other custom data sources in Redash
+---
+
+Redash supports several custom data sources that allow you to query APIs, process data with Python, or load data from files.
+
+## Python
+
+The Python data source lets you write custom queries in Python, enabling data transformations, API calls, and complex logic.
+
+### Configuration
+
+<ParamField path="allowedImportModules" type="string">
+  Comma-separated list of Python modules available for import (e.g., `requests,pandas,numpy`)
+</ParamField>
+
+<ParamField path="additionalModulesPaths" type="string">
+  Comma-separated paths to add to Python's module search path
+</ParamField>
+
+<ParamField path="additionalBuiltins" type="string">
+  Comma-separated additional built-in functions to allow
+</ParamField>
+
+### Security Model
+
+The Python data source uses RestrictedPython for security:
+
+- Only whitelisted modules can be imported
+- Limited built-in functions available
+- No file system access
+- No network access (unless via allowed modules like `requests`)
+
+### Query Structure
+
+Python queries must populate a `result` dictionary:
+
+```python
+# Basic query structure
+result = {
+    "columns": [
+        {"name": "column1", "friendly_name": "Column 1", "type": "string"},
+        {"name": "column2", "friendly_name": "Column 2", "type": "integer"}
+    ],
+    "rows": [
+        {"column1": "value1", "column2": 123},
+        {"column1": "value2", "column2": 456}
+    ]
+}
+```
+
+### Available Column Types
+
+- `TYPE_STRING` - Text data
+- `TYPE_INTEGER` - Whole numbers
+- `TYPE_FLOAT` - Decimal numbers
+- `TYPE_BOOLEAN` - True/False
+- `TYPE_DATE` - Date without time
+- `TYPE_DATETIME` - Date with time
+
+### Helper Functions
+
+#### add_result_column()
+
+Add a column to the result:
+
+```python
+add_result_column(result, "user_id", "User ID", TYPE_INTEGER)
+add_result_column(result, "username", "Username", TYPE_STRING)
+add_result_column(result, "created_at", "Created", TYPE_DATETIME)
+```
+
+#### add_result_row()
+
+Add a row to the result:
+
+```python
+add_result_row(result, {
+    "user_id": 1,
+    "username": "alice",
+    "created_at": "2024-01-15T10:30:00"
+})
+```
+
+#### execute_query()
+
+Query other data sources:
+
+```python
+# Query by data source name
+data = execute_query("PostgreSQL Production", """
+    SELECT user_id, username, email
+    FROM users
+    WHERE active = true
+""")
+
+# Query by data source ID
+data = execute_query(42, "SELECT * FROM orders LIMIT 100")
+
+# Get as pandas DataFrame (if pandas is enabled)
+df = execute_query("MySQL Analytics", "SELECT * FROM events", result_type="dataframe")
+```
+
+#### get_query_result()
+
+Retrieve cached results from an existing query:
+
+```python
+# Get results from query ID 123
+data = get_query_result(123)
+
+for row in data['rows']:
+    print(row)
+```
+
+#### get_source_schema()
+
+Get schema information from a data source:
+
+```python
+schema = get_source_schema("PostgreSQL Production")
+
+for table in schema:
+    print(f"Table: {table['name']}")
+    for column in table['columns']:
+        print(f"  - {column}")
+```
+
+#### get_current_user()
+
+Get information about the user running the query:
+
+```python
+user = get_current_user()
+print(f"Query run by: {user['email']}")
+```
+
+### Example Queries
+
+#### Simple Data Generation
+
+```python
+# Generate sample data
+add_result_column(result, "id", "ID", TYPE_INTEGER)
+add_result_column(result, "name", "Name", TYPE_STRING)
+add_result_column(result, "value", "Value", TYPE_FLOAT)
+
+for i in range(1, 11):
+    add_result_row(result, {
+        "id": i,
+        "name": f"Item {i}",
+        "value": i * 10.5
+    })
+```
+
+#### Query Multiple Data Sources
+
+```python
+# Combine data from multiple sources
+users = execute_query("PostgreSQL", "SELECT user_id, username FROM users")
+events = execute_query("MongoDB", '{"collection": "events", "limit": 1000}')
+
+# Process and combine
+user_dict = {u['user_id']: u['username'] for u in users['rows']}
+
+add_result_column(result, "username", "Username", TYPE_STRING)
+add_result_column(result, "event_count", "Events", TYPE_INTEGER)
+
+event_counts = {}
+for event in events['rows']:
+    uid = event['user_id']
+    event_counts[uid] = event_counts.get(uid, 0) + 1
+
+for user_id, count in event_counts.items():
+    if user_id in user_dict:
+        add_result_row(result, {
+            "username": user_dict[user_id],
+            "event_count": count
+        })
+```
+
+#### Using Pandas
+
+If pandas is enabled:
+
+```python
+# Query as DataFrame
+df = execute_query("PostgreSQL", """
+    SELECT category, SUM(amount) as total
+    FROM sales
+    GROUP BY category
+""", result_type="dataframe")
+
+# Process with pandas
+df['percentage'] = (df['total'] / df['total'].sum() * 100).round(2)
+
+# Convert back to Redash result
+dataframe_to_result(result, df)
+```
+
+---
+
+## JSON API
+
+Query JSON-based REST APIs directly from Redash.
+
+### Configuration
+
+<ParamField path="base_url" type="string">
+  Base URL for API requests (URLs in queries are relative to this)
+</ParamField>
+
+<ParamField path="username" type="string">
+  Username for HTTP basic authentication
+</ParamField>
+
+<ParamField path="password" type="string">
+  Password for HTTP basic authentication
+</ParamField>
+
+### Query Format
+
+JSON API queries use YAML:
+
+```yaml
+url: /api/users
+method: get
+params:
+  status: active
+  limit: 100
+headers:
+  X-API-Key: your-api-key
+```
+
+### Query Parameters
+
+- **url** (required) - API endpoint URL
+- **method** - HTTP method (`get` or `post`)
+- **params** - Query string parameters
+- **headers** - HTTP headers
+- **data** - Request body for POST
+- **json** - JSON request body
+- **auth** - HTTP auth as `[username, password]`
+- **fields** - List of fields to include in results
+- **path** - JSON path to extract data (e.g., `data.results`)
+- **pagination** - Pagination configuration
+
+### Example: Simple GET Request
+
+```yaml
+url: https://api.example.com/users
+method: get
+params:
+  page: 1
+  per_page: 50
+fields:
+  - id
+  - name
+  - email
+```
+
+### Example: POST Request
+
+```yaml
+url: https://api.example.com/search
+method: post
+json:
+  query: "active users"
+  filters:
+    status: active
+    created_after: "2024-01-01"
+path: results.users
+```
+
+### Example: Custom Headers
+
+```yaml
+url: /api/v2/metrics
+headers:
+  Authorization: Bearer your-token-here
+  X-Custom-Header: custom-value
+fields:
+  - metric_name
+  - value
+  - timestamp
+```
+
+### Pagination Support
+
+#### URL-Based Pagination
+
+```yaml
+url: /api/items
+pagination:
+  type: url
+  path: links.next  # JSON path to next page URL
+```
+
+#### Token-Based Pagination
+
+```yaml
+url: /api/items
+pagination:
+  type: token
+  fields:
+    - next_page_token  # Field containing next token
+    - page_token       # Parameter to send token
+```
+
+### Path Extraction
+
+Use `path` to extract nested data:
+
+```yaml
+url: /api/response
+path: data.results.items  # Extracts from {"data": {"results": {"items": [...]}}}
+```
+
+---
+
+## CSV
+
+Load data from CSV files via URL.
+
+### Configuration
+
+No configuration needed - CSV data source is ready to use.
+
+### Query Format
+
+```yaml
+url: https://example.com/data/sales.csv
+user-agent: Redash/1.0
+```
+
+### Additional Parameters
+
+Pass pandas `read_csv` parameters:
+
+```yaml
+url: https://example.com/data.csv
+user-agent: Redash
+delimiter: ";"
+encoding: utf-8
+skiprows: 1
+usecols:
+  - name
+  - email
+  - created_at
+```
+
+### Example: Public Dataset
+
+```yaml
+url: https://raw.githubusercontent.com/example/data/main/users.csv
+user-agent: Redash
+```
+
+---
+
+## Excel
+
+Load data from Excel files via URL.
+
+### Query Format
+
+```yaml
+url: https://example.com/data/report.xlsx
+sheet_name: Sheet1
+```
+
+### Parameters
+
+- **url** - URL to Excel file
+- **sheet_name** - Sheet to read (default: first sheet)
+- **header** - Row number to use as column names
+- **skiprows** - Rows to skip
+- **usecols** - Columns to read
+
+---
+
+## URL
+
+Fetch data from any URL (plain text, JSON, etc.).
+
+### Configuration
+
+Similar to JSON API - supports base URL and authentication.
+
+### Query Format
+
+```yaml
+url: https://example.com/api/status
+```
+
+Returns the response as-is (useful for monitoring endpoints, webhooks, etc.).
+
+---
+
+## Query Results
+
+Query existing Redash query results like a data source.
+
+### Configuration
+
+- **Query ID** - The ID of the query to use as a data source
+
+### Query Format
+
+Use SQL to query cached results:
+
+```sql
+SELECT user_id, COUNT(*) as event_count
+FROM query_123
+WHERE event_date >= '2024-01-01'
+GROUP BY user_id
+ORDER BY event_count DESC
+```
+
+<Note>
+Query Results data source queries the cached results, not the original data source. Refresh the source query to update data.
+</Note>
+
+---
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Python Data Source">
+    - RestrictedPython limits what code can execute
+    - Only enable trusted modules
+    - Users can query other data sources they have access to
+    - No file system or network access by default
+    - Review Python query code before scheduling
+  </Accordion>
+  
+  <Accordion title="JSON API">
+    - Store API keys securely in data source config
+    - Use authentication fields instead of hardcoding tokens
+    - Be cautious with rate limits
+    - Validate SSL certificates (set `verify: true`)
+  </Accordion>
+  
+  <Accordion title="CSV/Excel URLs">
+    - Only load from trusted sources
+    - Be aware of file size limits
+    - Redash blocks private IP addresses by default
+  </Accordion>
+</AccordionGroup>
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="API Integration" icon="plug">
+    Query REST APIs, combine with database data, create unified reports
+  </Card>
+  <Card title="Data Transformation" icon="code">
+    Use Python to clean, transform, or enrich data from multiple sources
+  </Card>
+  <Card title="External Data" icon="cloud">
+    Load CSV/Excel files from cloud storage or public datasets
+  </Card>
+  <Card title="Cross-Source Joins" icon="link">
+    Join data from different databases using Python queries
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+- **Cache Results**: Custom data source queries can be slow - enable result caching
+- **Limit Data Size**: Keep result sets reasonable (< 10,000 rows)
+- **Error Handling**: Add try/except in Python queries for robustness
+- **Documentation**: Comment complex Python queries
+- **Testing**: Test custom queries thoroughly before scheduling
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Writing Queries" icon="code" href="/queries/writing-queries">
+    Learn query syntax and best practices
+  </Card>
+  <Card title="Visualizations" icon="chart-line" href="/visualizations/overview">
+    Visualize your custom data source results
+  </Card>
+</CardGroup>

@@ -1,0 +1,559 @@
+---
+title: Alerts
+description: Create and manage alerts for query results
+---
+
+## Overview
+
+Alerts notify you when query results meet specific conditions. They can monitor metrics and trigger notifications through various destinations (email, Slack, webhooks, etc.).
+
+## List Alerts
+
+Retrieve all alerts accessible to the user.
+
+```bash
+GET /api/alerts
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts
+```
+
+### Response
+
+```json
+[
+  {
+    "id": 12,
+    "name": "High Error Rate",
+    "query_id": 123,
+    "user": {"id": 1, "name": "Admin"},
+    "options": {
+      "column": "error_rate",
+      "op": "greater than",
+      "value": 0.05,
+      "muted": false
+    },
+    "state": "ok",
+    "last_triggered_at": "2024-01-20T14:30:00Z",
+    "rearm": 3600,
+    "created_at": "2024-01-15T10:00:00Z",
+    "updated_at": "2024-01-20T14:30:00Z"
+  }
+]
+```
+
+## Get Alert
+
+Retrieve a specific alert.
+
+```bash
+GET /api/alerts/<alert_id>
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts/12
+```
+
+### Response Fields
+
+<ResponseField name="id" type="number">
+  Alert ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Alert name
+</ResponseField>
+
+<ResponseField name="query_id" type="number">
+  ID of the query being monitored
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  User who created the alert
+</ResponseField>
+
+<ResponseField name="options" type="object">
+  Alert configuration including condition and threshold
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  Current alert state: `ok`, `triggered`, or `unknown`
+</ResponseField>
+
+<ResponseField name="last_triggered_at" type="string">
+  Timestamp when alert last triggered (ISO format)
+</ResponseField>
+
+<ResponseField name="rearm" type="number">
+  Seconds to wait before re-triggering after an alert (null for no rearm)
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  Creation timestamp (ISO format)
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  Last update timestamp (ISO format)
+</ResponseField>
+
+## Create Alert
+
+Create a new alert for a query.
+
+```bash
+POST /api/alerts
+```
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Alert name
+</ParamField>
+
+<ParamField body="query_id" type="number" required>
+  ID of the query to monitor
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  Alert configuration
+</ParamField>
+
+<ParamField body="rearm" type="number">
+  Seconds to wait before re-triggering (null for no rearm)
+</ParamField>
+
+### Alert Options
+
+<ParamField body="options.column" type="string" required>
+  Column name to monitor
+</ParamField>
+
+<ParamField body="options.op" type="string" required>
+  Comparison operator: `equals`, `not equals`, `greater than`, `less than`, `greater than or equals`, `less than or equals`
+</ParamField>
+
+<ParamField body="options.value" type="any" required>
+  Threshold value to compare against
+</ParamField>
+
+<ParamField body="options.muted" type="boolean" default="false">
+  Whether the alert is muted
+</ParamField>
+
+<ParamField body="options.custom_subject" type="string">
+  Custom email subject template
+</ParamField>
+
+<ParamField body="options.custom_body" type="string">
+  Custom email body template
+</ParamField>
+
+<ParamField body="options.template" type="string">
+  Alert template name (if using predefined templates)
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "High Error Rate Alert",
+    "query_id": 123,
+    "options": {
+      "column": "error_rate",
+      "op": "greater than",
+      "value": 0.05,
+      "custom_subject": "Error rate exceeded threshold",
+      "custom_body": "The error rate is {{column}} which exceeds the threshold of {{op}} {{value}}"
+    },
+    "rearm": 3600
+  }' \
+  https://redash.example.com/api/alerts
+```
+
+### Response
+
+Returns the created alert object.
+
+## Update Alert
+
+Update an existing alert.
+
+```bash
+POST /api/alerts/<alert_id>
+```
+
+### Request Body
+
+<ParamField body="name" type="string">
+  Alert name
+</ParamField>
+
+<ParamField body="query_id" type="number">
+  Query ID
+</ParamField>
+
+<ParamField body="options" type="object">
+  Alert options
+</ParamField>
+
+<ParamField body="rearm" type="number">
+  Rearm interval in seconds
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Alert Name",
+    "options": {
+      "column": "error_rate",
+      "op": "greater than",
+      "value": 0.03
+    },
+    "rearm": 7200
+  }' \
+  https://redash.example.com/api/alerts/12
+```
+
+### Response
+
+Returns the updated alert object.
+
+## Delete Alert
+
+Delete an alert.
+
+```bash
+DELETE /api/alerts/<alert_id>
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts/12
+```
+
+<Warning>
+  Only admins or the alert owner can delete alerts.
+</Warning>
+
+## Mute Alert
+
+Temporarily disable an alert without deleting it.
+
+```bash
+POST /api/alerts/<alert_id>/mute
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts/12/mute
+```
+
+## Unmute Alert
+
+Re-enable a muted alert.
+
+```bash
+DELETE /api/alerts/<alert_id>/mute
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts/12/mute
+```
+
+## Evaluate Alert
+
+Manually trigger alert evaluation (useful for testing).
+
+```bash
+POST /api/alerts/<alert_id>/eval
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts/12/eval
+```
+
+This will:
+1. Execute the associated query
+2. Evaluate the alert condition
+3. Send notifications if the condition is met
+4. Update the alert state
+
+## Alert Subscriptions
+
+### List Subscriptions
+
+Get all subscriptions for an alert.
+
+```bash
+GET /api/alerts/<alert_id>/subscriptions
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts/12/subscriptions
+```
+
+### Response
+
+```json
+[
+  {
+    "id": 5,
+    "user": {"id": 1, "name": "Admin", "email": "admin@example.com"},
+    "destination": {
+      "id": 2,
+      "name": "Slack - Engineering",
+      "type": "slack"
+    }
+  }
+]
+```
+
+### Create Subscription
+
+Subscribe to alert notifications.
+
+```bash
+POST /api/alerts/<alert_id>/subscriptions
+```
+
+#### Request Body
+
+<ParamField body="destination_id" type="number">
+  Notification destination ID (optional - defaults to email)
+</ParamField>
+
+#### Example Request
+
+```bash
+# Subscribe via email (default)
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  https://redash.example.com/api/alerts/12/subscriptions
+
+# Subscribe via Slack
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"destination_id": 2}' \
+  https://redash.example.com/api/alerts/12/subscriptions
+```
+
+### Delete Subscription
+
+Unsubscribe from alert notifications.
+
+```bash
+DELETE /api/alerts/<alert_id>/subscriptions/<subscriber_id>
+```
+
+#### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/alerts/12/subscriptions/5
+```
+
+## Alert Conditions
+
+Alerts evaluate the first row of query results against the specified condition.
+
+### Comparison Operators
+
+| Operator | Description | Example |
+|----------|-------------|----------|
+| `equals` | Value equals threshold | `error_count equals 0` |
+| `not equals` | Value doesn't equal threshold | `status not equals "ok"` |
+| `greater than` | Value exceeds threshold | `response_time greater than 1000` |
+| `greater than or equals` | Value meets or exceeds threshold | `users greater than or equals 100` |
+| `less than` | Value is below threshold | `inventory less than 10` |
+| `less than or equals` | Value is at or below threshold | `error_rate less than or equals 0.01` |
+
+### Query Requirements
+
+For alerts to work properly, your query should:
+
+1. Return at least one row
+2. Include the column specified in the alert options
+3. Return a value that can be compared (number, string, date)
+
+**Example Query:**
+```sql
+SELECT 
+  COUNT(*) FILTER (WHERE status = 'error') * 1.0 / COUNT(*) as error_rate
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '5 minutes'
+```
+
+## Alert States
+
+Alerts can be in one of three states:
+
+### OK State
+
+The condition is not met. Everything is normal.
+
+```json
+{
+  "state": "ok"
+}
+```
+
+### Triggered State
+
+The condition is met. Notifications are sent.
+
+```json
+{
+  "state": "triggered",
+  "last_triggered_at": "2024-01-20T14:30:00Z"
+}
+```
+
+### Unknown State
+
+Query failed or returned no results.
+
+```json
+{
+  "state": "unknown"
+}
+```
+
+## Rearm Behavior
+
+The `rearm` parameter controls how frequently an alert can trigger:
+
+- **null** (no rearm): Alert triggers every time the condition is met
+- **Number (seconds)**: Alert won't re-trigger within this time period after triggering
+
+**Example:**
+```json
+{
+  "rearm": 3600  // Wait 1 hour before re-triggering
+}
+```
+
+This prevents alert spam when conditions fluctuate.
+
+## Custom Templates
+
+Customize alert notifications with template variables:
+
+### Available Variables
+
+- `{{ALERT_NAME}}` - Alert name
+- `{{ALERT_URL}}` - URL to the alert
+- `{{ALERT_STATUS}}` - Current state (TRIGGERED/OK)
+- `{{QUERY_NAME}}` - Query name
+- `{{QUERY_URL}}` - URL to the query
+- `{{QUERY_RESULT_VALUE}}` - The monitored value
+- `{{QUERY_RESULT_ROWS}}` - All result rows as JSON
+
+### Example Custom Body
+
+```
+Alert: {{ALERT_NAME}}
+Status: {{ALERT_STATUS}}
+Current Value: {{QUERY_RESULT_VALUE}}
+
+Query: {{QUERY_NAME}}
+View: {{QUERY_URL}}
+```
+
+## Notification Destinations
+
+Alerts can send notifications to various destinations:
+
+- **Email** - Default, uses user's email address
+- **Slack** - Sends to Slack channels
+- **Webhook** - Posts to custom URLs
+- **HipChat** - Sends to HipChat rooms
+- **Mattermost** - Posts to Mattermost channels
+- **ChatWork** - Sends to ChatWork
+- **PagerDuty** - Creates PagerDuty incidents
+
+Destinations are configured at the organization level through the Redash UI.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Design Effective Queries">
+    - Keep queries simple and fast
+    - Return a single row with the metric to monitor
+    - Use recent time windows (last 5-10 minutes)
+    - Test queries before creating alerts
+  </Accordion>
+
+  <Accordion title="Set Appropriate Thresholds">
+    - Base thresholds on historical data
+    - Account for normal fluctuations
+    - Consider business hours vs. off-hours
+    - Use percentages for rates, not absolute counts
+  </Accordion>
+
+  <Accordion title="Configure Rearm Wisely">
+    - Use 1-hour rearm for most alerts
+    - Use shorter rearm for critical alerts
+    - Use longer rearm for low-priority alerts
+    - Consider no rearm for state-change alerts
+  </Accordion>
+
+  <Accordion title="Manage Alert Fatigue">
+    - Don't create too many alerts
+    - Mute alerts during maintenance
+    - Route alerts to appropriate teams
+    - Review and remove unused alerts
+  </Accordion>
+
+  <Accordion title="Test Your Alerts">
+    - Use the evaluate endpoint to test
+    - Subscribe yourself first before adding others
+    - Verify templates render correctly
+    - Check that destinations are configured properly
+  </Accordion>
+</AccordionGroup>
+
+## Permissions
+
+Alert operations require appropriate permissions:
+
+- **List/View**: Access to the associated query
+- **Create**: Access to the query with view permissions
+- **Update/Delete**: Admin or alert owner
+- **Mute/Unmute**: Admin or alert owner
+- **Subscribe**: Access to the alert
+- **Unsubscribe**: Admin or subscriber

@@ -1,0 +1,536 @@
+---
+title: Dashboards
+description: Manage dashboards and widgets
+---
+
+## List Dashboards
+
+Retrieve a paginated list of accessible dashboards.
+
+```bash
+GET /api/dashboards
+```
+
+### Query Parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number to retrieve
+</ParamField>
+
+<ParamField query="page_size" type="number" default="25">
+  Number of dashboards per page (max: 250)
+</ParamField>
+
+<ParamField query="q" type="string">
+  Full-text search term
+</ParamField>
+
+<ParamField query="tags" type="array">
+  Filter by tags
+</ParamField>
+
+<ParamField query="order" type="string">
+  Sort order. Options: `name`, `-name`, `created_at`, `-created_at`
+</ParamField>
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  "https://redash.example.com/api/dashboards?page=1&page_size=25"
+```
+
+### Response
+
+```json
+{
+  "count": 42,
+  "page": 1,
+  "page_size": 25,
+  "results": [
+    {
+      "id": 5,
+      "name": "Analytics Dashboard",
+      "slug": "analytics-dashboard",
+      "user_id": 1,
+      "layout": [],
+      "dashboard_filters_enabled": true,
+      "is_archived": false,
+      "is_draft": false,
+      "is_favorite": true,
+      "tags": ["analytics", "business"],
+      "options": {},
+      "version": 5,
+      "widgets": [],
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-20T14:22:00Z"
+    }
+  ]
+}
+```
+
+## Get Dashboard
+
+Retrieve a specific dashboard with all its widgets.
+
+```bash
+GET /api/dashboards/<dashboard_id>
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/dashboards/5
+```
+
+### Response Fields
+
+<ResponseField name="id" type="number">
+  Dashboard ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Dashboard name
+</ResponseField>
+
+<ResponseField name="slug" type="string">
+  URL-friendly slug
+</ResponseField>
+
+<ResponseField name="user_id" type="number">
+  ID of the dashboard creator
+</ResponseField>
+
+<ResponseField name="layout" type="array">
+  Array of widget layout configuration. Each element represents a row with widget IDs and their positions.
+</ResponseField>
+
+<ResponseField name="dashboard_filters_enabled" type="boolean">
+  Whether dashboard filters are enabled
+</ResponseField>
+
+<ResponseField name="is_archived" type="boolean">
+  Whether the dashboard is archived
+</ResponseField>
+
+<ResponseField name="is_draft" type="boolean">
+  Whether the dashboard is a draft
+</ResponseField>
+
+<ResponseField name="widgets" type="array">
+  Array of widget objects containing visualizations or text boxes
+</ResponseField>
+
+<ResponseField name="version" type="number">
+  Version number for optimistic locking
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Array of tag strings
+</ResponseField>
+
+<ResponseField name="options" type="object">
+  Dashboard options and settings
+</ResponseField>
+
+<ResponseField name="public_url" type="string">
+  Public URL if dashboard is shared (only present if shared)
+</ResponseField>
+
+<ResponseField name="api_key" type="string">
+  API key for public access (only present if shared)
+</ResponseField>
+
+<ResponseField name="can_edit" type="boolean">
+  Whether the current user can edit this dashboard
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "id": 5,
+  "name": "Analytics Dashboard",
+  "slug": "analytics-dashboard",
+  "user_id": 1,
+  "layout": [
+    [1, 2],
+    [3]
+  ],
+  "dashboard_filters_enabled": true,
+  "is_archived": false,
+  "is_draft": false,
+  "version": 5,
+  "tags": ["analytics"],
+  "options": {},
+  "widgets": [
+    {
+      "id": 1,
+      "width": 1,
+      "options": {"position": {"col": 0, "row": 0, "sizeX": 3, "sizeY": 8}},
+      "dashboard_id": 5,
+      "text": "",
+      "visualization": {
+        "id": 10,
+        "type": "CHART",
+        "name": "User Growth",
+        "description": "",
+        "options": {},
+        "query": {
+          "id": 123,
+          "name": "User Statistics",
+          "description": "Daily active users"
+        }
+      },
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-20T14:22:00Z"
+    }
+  ],
+  "can_edit": true,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-20T14:22:00Z"
+}
+```
+
+## Create Dashboard
+
+Create a new dashboard.
+
+```bash
+POST /api/dashboards
+```
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Dashboard name
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My New Dashboard"}' \
+  https://redash.example.com/api/dashboards
+```
+
+### Response
+
+Returns the created dashboard object (initially empty with `is_draft: true`).
+
+## Update Dashboard
+
+Update an existing dashboard.
+
+```bash
+POST /api/dashboards/<dashboard_id>
+```
+
+### Request Body
+
+<ParamField body="name" type="string">
+  Dashboard name
+</ParamField>
+
+<ParamField body="layout" type="array">
+  Widget layout configuration
+</ParamField>
+
+<ParamField body="version" type="number" required>
+  Current version number (for optimistic locking)
+</ParamField>
+
+<ParamField body="tags" type="array">
+  Array of tag strings
+</ParamField>
+
+<ParamField body="is_draft" type="boolean">
+  Set to `false` to publish a draft dashboard
+</ParamField>
+
+<ParamField body="is_archived" type="boolean">
+  Set to `true` to archive the dashboard
+</ParamField>
+
+<ParamField body="dashboard_filters_enabled" type="boolean">
+  Enable or disable dashboard filters
+</ParamField>
+
+<ParamField body="options" type="object">
+  Dashboard options and settings
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Dashboard Name",
+    "layout": [[1, 2], [3]],
+    "version": 5,
+    "is_draft": false,
+    "tags": ["analytics", "updated"]
+  }' \
+  https://redash.example.com/api/dashboards/5
+```
+
+### Response
+
+Returns the updated dashboard object.
+
+<Note>
+  If the version doesn't match, you'll receive a 409 Conflict error. Retrieve the latest version and try again.
+</Note>
+
+## Delete Dashboard
+
+Archive a dashboard (soft delete).
+
+```bash
+DELETE /api/dashboards/<dashboard_id>
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/dashboards/5
+```
+
+### Response
+
+Returns the archived dashboard object with `is_archived: true`.
+
+## Fork Dashboard
+
+Create a copy of an existing dashboard with all its widgets.
+
+```bash
+POST /api/dashboards/<dashboard_id>/fork
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/dashboards/5/fork
+```
+
+### Response
+
+Returns a new dashboard object with all widgets copied.
+
+## Share Dashboard
+
+Enable public access to a dashboard.
+
+```bash
+POST /api/dashboards/<dashboard_id>/share
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/dashboards/5/share
+```
+
+### Response
+
+```json
+{
+  "public_url": "https://redash.example.com/public/dashboards/abc123def456789",
+  "api_key": "dashboard_api_key_here"
+}
+```
+
+<Warning>
+  Only admins or the dashboard owner can share dashboards. Public URLs are disabled if the organization setting `disable_public_urls` is enabled.
+</Warning>
+
+## Unshare Dashboard
+
+Disable public access to a dashboard.
+
+```bash
+DELETE /api/dashboards/<dashboard_id>/share
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/dashboards/5/share
+```
+
+## Get Public Dashboard
+
+Retrieve a publicly shared dashboard (no authentication required).
+
+```bash
+GET /api/dashboards/public/<token>
+```
+
+### Example Request
+
+```bash
+curl https://redash.example.com/api/dashboards/public/abc123def456789
+```
+
+### Response
+
+Returns a simplified dashboard object with public widget data (without sensitive information).
+
+## My Dashboards
+
+Get dashboards created by the current user.
+
+```bash
+GET /api/dashboards/my
+```
+
+Supports the same parameters as List Dashboards.
+
+## Favorite Dashboards
+
+Get dashboards marked as favorites by the current user.
+
+```bash
+GET /api/dashboards/favorites
+```
+
+Supports the same parameters as List Dashboards.
+
+## Dashboard Tags
+
+Get all available dashboard tags.
+
+```bash
+GET /api/dashboards/tags
+```
+
+### Response
+
+```json
+{
+  "tags": [
+    {"name": "analytics", "count": 12},
+    {"name": "business", "count": 8},
+    {"name": "reports", "count": 5}
+  ]
+}
+```
+
+## Widgets
+
+### Create Widget
+
+Add a widget to a dashboard.
+
+```bash
+POST /api/widgets
+```
+
+#### Request Body
+
+<ParamField body="dashboard_id" type="number" required>
+  Dashboard ID to add the widget to
+</ParamField>
+
+<ParamField body="visualization_id" type="number">
+  Visualization ID (for visualization widgets)
+</ParamField>
+
+<ParamField body="text" type="string">
+  Text content (for text widgets)
+</ParamField>
+
+<ParamField body="width" type="number" default="1">
+  Widget width (1 = full width, 2 = half width)
+</ParamField>
+
+<ParamField body="options" type="object">
+  Widget options including position
+</ParamField>
+
+#### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dashboard_id": 5,
+    "visualization_id": 10,
+    "width": 1,
+    "options": {
+      "position": {
+        "col": 0,
+        "row": 0,
+        "sizeX": 3,
+        "sizeY": 8
+      }
+    }
+  }' \
+  https://redash.example.com/api/widgets
+```
+
+### Update Widget
+
+Update an existing widget.
+
+```bash
+POST /api/widgets/<widget_id>
+```
+
+### Delete Widget
+
+Remove a widget from a dashboard.
+
+```bash
+DELETE /api/widgets/<widget_id>
+```
+
+## Dashboard Layout
+
+The dashboard layout is represented as a 2D array where:
+
+- Each element in the outer array represents a row
+- Each element in the inner array is a widget ID
+- Widgets are positioned left to right, top to bottom
+
+### Example Layout
+
+```json
+{
+  "layout": [
+    [1, 2],     // Row 1: Widget 1 and Widget 2 side by side
+    [3],        // Row 2: Widget 3 full width
+    [4, 5, 6]   // Row 3: Three widgets
+  ]
+}
+```
+
+### Widget Position Options
+
+```json
+{
+  "options": {
+    "position": {
+      "col": 0,      // Column position (0-based)
+      "row": 0,      // Row position (0-based)
+      "sizeX": 3,    // Width in grid units
+      "sizeY": 8     // Height in grid units
+    }
+  }
+}
+```

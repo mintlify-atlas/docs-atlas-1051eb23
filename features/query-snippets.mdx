@@ -1,0 +1,355 @@
+---
+title: Query Snippets  
+description: Create reusable query fragments to speed up query development
+---
+
+Query snippets are reusable fragments of SQL code that you can quickly insert into your queries using keyboard shortcuts. They help you write queries faster and maintain consistency across your organization.
+
+## What Are Query Snippets?
+
+Query snippets are saved text fragments that can be inserted into the query editor with a simple trigger phrase. They're useful for:
+
+- Common SQL patterns you use frequently
+- Complex JOIN clauses
+- Standard WHERE conditions
+- Date calculations and formatting
+- Organization-specific conventions
+- Boilerplate code
+
+## Creating a Query Snippet
+
+To create a new query snippet:
+
+1. Navigate to **Settings** → **Query Snippets**
+2. Click **New Query Snippet**
+3. Fill in the required fields:
+   - **Trigger** - The shortcut text that will expand to your snippet
+   - **Description** - What the snippet does
+   - **Snippet** - The actual SQL code to insert
+4. Click **Save**
+
+### Snippet Fields
+
+#### Trigger
+
+The trigger is the text you type in the query editor to invoke the snippet. 
+
+**Best practices:**
+- Keep triggers short and memorable
+- Use prefixes to group related snippets (e.g., `date_`, `join_`)
+- Avoid conflicts with SQL keywords
+- Use lowercase for consistency
+
+**Examples:**
+- `date_yesterday`
+- `join_users`  
+- `where_active`
+- `fmt_currency`
+
+#### Description
+
+A brief explanation of what the snippet does. This helps others (and your future self) understand when to use it.
+
+**Examples:**
+- "Get yesterday's date in YYYY-MM-DD format"
+- "Standard JOIN to users table with common columns"
+- "Filter for active records only"
+
+#### Snippet Content
+
+The actual code that will be inserted. This can be:
+
+- A single line or multiple lines
+- Complete SQL statements or fragments  
+- Include placeholders for values you'll fill in
+
+## Using Query Snippets
+
+There are two ways to insert snippets into your query:
+
+### Auto-complete Trigger
+
+1. In the query editor, start typing the trigger word
+2. The autocomplete menu shows matching snippets
+3. Press `Tab` or `Enter` to insert the snippet
+4. Continue editing as needed
+
+### Manual Insertion
+
+1. Type the complete trigger word
+2. The snippet automatically expands
+3. The trigger text is replaced with the snippet content
+
+You can also browse available snippets in the autocomplete menu by pressing `Ctrl+Space` in the query editor.
+
+## Example Snippets
+
+Here are some useful snippet patterns:
+
+### Date and Time Snippets
+
+**Yesterday's date:**
+```
+Trigger: date_yesterday
+Snippet: CURRENT_DATE - INTERVAL '1 day'
+```
+
+**Last 7 days:**
+```
+Trigger: date_last7d
+Snippet: WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+```
+
+**Start of month:**
+```
+Trigger: date_month_start  
+Snippet: DATE_TRUNC('month', CURRENT_DATE)
+```
+
+### JOIN Patterns
+
+**Join users table:**
+```
+Trigger: join_users
+Snippet: LEFT JOIN users ON users.id = {{ table }}.user_id
+```
+
+**Join with aggregation:**
+```
+Trigger: join_counts
+Snippet: LEFT JOIN (
+  SELECT user_id, COUNT(*) as count
+  FROM {{ table }}
+  GROUP BY user_id
+) t ON t.user_id = users.id
+```
+
+### WHERE Clauses
+
+**Active records only:**
+```
+Trigger: where_active
+Snippet: WHERE status = 'active' AND deleted_at IS NULL
+```
+
+**Date range filter:**
+```  
+Trigger: where_daterange
+Snippet: WHERE created_at BETWEEN '{{ start_date }}' AND '{{ end_date }}'
+```
+
+### Common Aggregations
+
+**Daily counts:**
+```
+Trigger: agg_daily
+Snippet: SELECT 
+  DATE_TRUNC('day', created_at) as date,
+  COUNT(*) as count
+FROM {{ table }}
+GROUP BY 1
+ORDER BY 1
+```
+
+**Percentage calculation:**
+```
+Trigger: calc_pct
+Snippet: ROUND({{ numerator }}::numeric / NULLIF({{ denominator }}, 0) * 100, 2) as percentage
+```
+
+### Formatting
+
+**Format as currency:**
+```
+Trigger: fmt_currency  
+Snippet: TO_CHAR({{ amount }}, 'FM$999,999,990.00')
+```
+
+**Round to 2 decimals:**
+```
+Trigger: fmt_decimal
+Snippet: ROUND({{ value }}::numeric, 2)
+```
+
+## Managing Query Snippets
+
+### Viewing All Snippets
+
+Access the snippets list:
+
+1. Go to **Settings** → **Query Snippets**
+2. View all snippets in a table
+3. See trigger, description, and creator for each
+4. Search and sort to find specific snippets
+
+### Editing Snippets
+
+Update an existing snippet:
+
+1. Click the trigger name in the snippets list
+2. Modify any of the fields
+3. Click **Save**
+
+Changes take effect immediately for all users.
+
+**Note:** Only admins and the snippet creator can edit snippets.
+
+### Deleting Snippets
+
+Remove snippets that are no longer needed:
+
+1. Find the snippet in the list
+2. Click the **Delete** button
+3. Confirm deletion
+
+Deleting a snippet only removes the shortcut - it doesn't affect queries that have already used it.
+
+## Snippet Best Practices
+
+**Keep snippets focused:**
+- Each snippet should do one thing well
+- Avoid overly complex multi-purpose snippets
+- Break large patterns into smaller, composable snippets
+
+**Use placeholders:**
+- Include `{{ placeholder }}` syntax for values that will change
+- Use descriptive placeholder names
+- Document what each placeholder represents in the description
+
+**Establish naming conventions:**
+- Use prefixes to group related snippets
+- Keep triggers short but descriptive  
+- Use consistent formatting (lowercase, underscores)
+- Avoid conflicts with SQL keywords
+
+**Document thoroughly:**
+- Write clear descriptions
+- Include examples in the description if needed
+- Explain any assumptions or requirements
+- Note database-specific syntax
+
+**Share organization standards:**
+- Create snippets for company-specific patterns
+- Standardize common calculations
+- Encode business logic consistently
+- Make onboarding easier for new team members
+
+**Test before saving:**
+- Verify the SQL is syntactically correct
+- Test with sample data
+- Check for edge cases
+- Ensure placeholders are clear
+
+## Permissions
+
+Query snippet permissions work as follows:
+
+- **View:** All users can see and use all snippets
+- **Create:** Users with `create_query` permission can create snippets
+- **Edit:** Only admins and the snippet creator can edit
+- **Delete:** Only admins and the snippet creator can delete
+
+Snippets are organization-wide - once created, they're available to everyone in your Redash instance.
+
+## Advanced Techniques
+
+### Parameterized Snippets
+
+Combine snippets with query parameters:
+
+```
+Trigger: where_daterange_param
+Snippet: WHERE created_at BETWEEN '{{ start_date }}' AND '{{ end_date }}'
+```
+
+When you insert this snippet and save the query, Redash will detect the parameters and create parameter widgets.
+
+### Nested Placeholders
+
+Use placeholders within placeholders for flexibility:
+
+```
+Trigger: case_status  
+Snippet: CASE 
+  WHEN {{ column }} = '{{ value1 }}' THEN '{{ label1 }}'
+  WHEN {{ column }} = '{{ value2 }}' THEN '{{ label2 }}'
+  ELSE '{{ default }}'
+END
+```
+
+### Database-Specific Snippets
+
+Create snippets for database-specific functions:
+
+**PostgreSQL:**
+```
+Trigger: pg_array_agg
+Snippet: ARRAY_AGG({{ column }} ORDER BY {{ order_column }})
+```
+
+**MySQL:**  
+```
+Trigger: mysql_group_concat
+Snippet: GROUP_CONCAT({{ column }} ORDER BY {{ order_column }} SEPARATOR ', ')
+```
+
+### Multi-line Templates
+
+Create full query templates:
+
+```
+Trigger: template_daily_metrics
+Snippet: SELECT 
+  DATE_TRUNC('day', created_at) as date,
+  COUNT(DISTINCT user_id) as unique_users,
+  COUNT(*) as total_events,
+  COUNT(DISTINCT session_id) as sessions
+FROM events
+WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY 1
+ORDER BY 1 DESC
+```
+
+## Tips and Tricks
+
+**Quick access:**
+- Press `Ctrl+Space` to see all available snippets
+- Start typing to filter snippets
+- Navigate with arrow keys, select with Enter
+
+**Combine snippets:**
+- Use multiple snippets in a single query
+- Build complex queries from simple, reusable parts
+- Layer snippets for common patterns
+
+**Version control:**
+- Keep a changelog in the snippet description
+- Document breaking changes
+- Consider version numbers in trigger names for major changes
+
+**Testing:**
+- Create a test query to try new snippets
+- Verify snippets work across different data sources
+- Check performance of snippet-generated queries
+
+## Troubleshooting
+
+**Snippet not appearing in autocomplete:**
+- Refresh the page to load new snippets
+- Check that you have `create_query` permission
+- Verify the trigger doesn't conflict with SQL keywords
+
+**Snippet expands incorrectly:**
+- Check for typos in the trigger word
+- Ensure you're typing the complete trigger
+- Look for conflicts with other snippets
+
+**Placeholder confusion:**  
+- Use clear, descriptive placeholder names
+- Document placeholders in the description
+- Use consistent placeholder naming
+
+**Can't edit/delete snippet:**
+- Only admins and creators can modify snippets
+- Contact an admin or the creator for changes
+- Fork the snippet concept into a new one you own

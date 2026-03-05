@@ -1,0 +1,273 @@
+---
+title: Google BigQuery
+description: Connect Redash to Google BigQuery to query and visualize your data warehouse
+---
+
+Google BigQuery is a serverless, highly scalable data warehouse that enables super-fast SQL queries using Google's infrastructure.
+
+## Prerequisites
+
+- A Google Cloud Platform (GCP) project with BigQuery enabled
+- Either a service account JSON key file or Application Default Credentials (ADC) configured
+- Appropriate IAM permissions to access BigQuery datasets
+
+## Authentication Methods
+
+BigQuery supports two authentication methods:
+
+### 1. Service Account Key (Recommended for Production)
+
+Create a service account in your GCP project and download the JSON key file:
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Navigate to **IAM & Admin** > **Service Accounts**
+3. Create a new service account or select an existing one
+4. Grant the following roles:
+   - `BigQuery Data Viewer` - to read data from datasets
+   - `BigQuery Job User` - to run queries
+   - `BigQuery Metadata Viewer` - to load schema information (optional)
+5. Create and download a JSON key file
+
+<Warning>
+  Keep your service account key file secure. Never commit it to version control.
+</Warning>
+
+### 2. Application Default Credentials (ADC)
+
+If you're running Redash on Google Compute Engine, App Engine, or other GCP services, you can use ADC without a key file. Simply omit the `jsonKeyFile` configuration.
+
+## Configuration
+
+### Required Settings
+
+<ParamField path="projectId" type="string" required>
+  Your Google Cloud project ID. Find this in the GCP Console dashboard.
+</ParamField>
+
+### Authentication
+
+<ParamField path="jsonKeyFile" type="string">
+  Base64-encoded service account JSON key file. If omitted, ADC will be used.
+  
+  To encode your key file:
+  ```bash
+  base64 -i service-account-key.json | pbcopy
+  ```
+</ParamField>
+
+### Query Configuration
+
+<ParamField path="useStandardSql" type="boolean" default="true">
+  Use Standard SQL syntax instead of Legacy SQL. Standard SQL is recommended for new projects.
+</ParamField>
+
+<ParamField path="location" type="string">
+  Processing location for queries (e.g., `us-central1`, `EU`, `asia-northeast1`). Must match your dataset location.
+</ParamField>
+
+<ParamField path="loadSchema" type="boolean" default="false">
+  Enable automatic schema loading in the Redash query editor. Note: This queries `INFORMATION_SCHEMA` which may incur costs.
+</ParamField>
+
+### Advanced Settings
+
+<ParamField path="totalMBytesProcessedLimit" type="number">
+  Maximum megabytes that can be processed by a single query. Queries exceeding this limit will be rejected before execution.
+  
+  Example: Set to `1000` to limit queries to 1GB of scanned data.
+</ParamField>
+
+<ParamField path="maximumBillingTier" type="number">
+  Limits the billing tier for the query. By default, queries can use up to 100 times the amount of resources allocated to your project.
+</ParamField>
+
+<ParamField path="userDefinedFunctionResourceUri" type="string">
+  Comma-separated list of Google Cloud Storage URIs containing JavaScript UDF libraries.
+  
+  Example: `gs://bucket/date_utils.js, gs://bucket/string_utils.js`
+</ParamField>
+
+<ParamField path="useQueryAnnotation" type="boolean" default="false">
+  Add metadata comments to queries for tracking purposes. Metadata includes query ID, user, and visualization info.
+</ParamField>
+
+## Schema Browser
+
+When `loadSchema` is enabled, Redash loads table and column information from BigQuery's `INFORMATION_SCHEMA`. This provides:
+
+- Table names organized by dataset
+- Column names and data types
+- Table and column descriptions
+- Support for nested and repeated fields
+
+<Note>
+  Schema loading queries all datasets in your project. For projects with many datasets, this may take time and incur query costs.
+</Note>
+
+## Query Features
+
+### Supported Data Types
+
+- `INTEGER` - Mapped to integer
+- `FLOAT` - Mapped to float
+- `BOOLEAN` - Mapped to boolean
+- `STRING` - Mapped to string
+- `TIMESTAMP` - Mapped to datetime
+- `DATETIME` - Mapped to datetime
+- `DATE` - Mapped to date
+- `RECORD` - Nested fields (flattened in results)
+- Arrays and repeated fields (returned as JSON)
+
+### Query Metadata
+
+Every query result includes metadata about data scanned:
+
+```json
+{
+  "data_scanned": 1073741824  // bytes
+}
+```
+
+Use this to monitor query costs. BigQuery charges $5 per TB scanned (first 1TB per month is free).
+
+### Query Cancellation
+
+Redash automatically cancels running BigQuery jobs when:
+- The query times out
+- The user manually cancels the query
+- The query is interrupted
+
+## Example Queries
+
+### Basic Query
+
+```sql
+SELECT
+  user_id,
+  COUNT(*) as event_count,
+  DATE(event_timestamp) as event_date
+FROM
+  `project.dataset.events`
+WHERE
+  event_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+GROUP BY
+  user_id, event_date
+ORDER BY
+  event_count DESC
+LIMIT 100
+```
+
+### Using User-Defined Functions
+
+First, configure `userDefinedFunctionResourceUri` with your UDF library, then:
+
+```sql
+SELECT
+  myFunction(column_name) as result
+FROM
+  `project.dataset.table`
+```
+
+### Querying Nested Fields
+
+```sql
+SELECT
+  user.email,
+  user.profile.age,
+  event.name
+FROM
+  `project.dataset.users`,
+  UNNEST(events) as event
+WHERE
+  user.profile.age > 21
+```
+
+## Cost Management
+
+### Preventing Expensive Queries
+
+1. **Set Query Size Limits**: Use `totalMBytesProcessedLimit` to reject queries that would scan too much data
+
+2. **Use Partitioned Tables**: Query only the partitions you need:
+   ```sql
+   WHERE _PARTITIONTIME >= TIMESTAMP('2024-01-01')
+   ```
+
+3. **Select Specific Columns**: Avoid `SELECT *` to reduce scanned data
+
+4. **Monitor Metadata**: Check the `data_scanned` value in query results
+
+### Billing Tier Limits
+
+Set `maximumBillingTier` to prevent queries from using excessive slots:
+
+- `1` - Standard tier (single worker)
+- `2` - Double resources
+- Higher values allow more parallel processing
+
+## Troubleshooting
+
+### "Access Denied" Errors
+
+**Problem**: `Access Denied: Project [project-id]: User does not have permission`
+
+**Solution**: Ensure your service account has the required IAM roles:
+- `roles/bigquery.dataViewer`
+- `roles/bigquery.jobUser`
+
+### "Not Found: Dataset" Errors
+
+**Problem**: Dataset not found or location mismatch
+
+**Solution**: 
+1. Verify the dataset exists in your project
+2. Set the `location` parameter to match your dataset's location
+3. Ensure fully qualified table names: `` `project.dataset.table` ``
+
+### Schema Not Loading
+
+**Problem**: Tables don't appear in the schema browser
+
+**Solutions**:
+1. Enable `loadSchema` in the data source configuration
+2. Grant `roles/bigquery.metadataViewer` to your service account
+3. Check that your dataset location matches the configured `location`
+
+### Connection Timeouts
+
+**Problem**: Queries timing out on large result sets
+
+**Solution**: BigQuery automatically paginates large results. If queries still timeout:
+1. Reduce result set size with `LIMIT`
+2. Add filters to reduce scanned data
+3. Use scheduled queries for very large exports
+
+## Best Practices
+
+1. **Use Standard SQL**: Legacy SQL is deprecated and lacks many features
+
+2. **Enable Query Annotation**: Track query usage and costs with `useQueryAnnotation`
+
+3. **Set Resource Limits**: Protect against accidentally expensive queries:
+   - `totalMBytesProcessedLimit` for data scanned
+   - `maximumBillingTier` for compute resources
+
+4. **Optimize for Cost**:
+   - Use partitioned and clustered tables
+   - Avoid `SELECT *`
+   - Use query caching (results cached for 24 hours)
+   - Preview data with `LIMIT` before running full queries
+
+5. **Secure Credentials**:
+   - Use service accounts with minimal required permissions
+   - Rotate service account keys regularly
+   - Never expose keys in query results or logs
+
+6. **Multi-Region Deployments**: Set the `location` parameter to match your data location for optimal performance
+
+## Additional Resources
+
+- [BigQuery Documentation](https://cloud.google.com/bigquery/docs)
+- [Standard SQL Reference](https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax)
+- [IAM Roles for BigQuery](https://cloud.google.com/bigquery/docs/access-control)
+- [Cost Optimization Guide](https://cloud.google.com/bigquery/docs/best-practices-costs)

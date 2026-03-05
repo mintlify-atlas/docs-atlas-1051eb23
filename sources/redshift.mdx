@@ -1,0 +1,474 @@
+---
+title: Amazon Redshift
+description: Connect Redash to Amazon Redshift to query and visualize your data warehouse
+---
+
+Amazon Redshift is a fast, fully managed cloud data warehouse that makes it simple and cost-effective to analyze data using standard SQL.
+
+## Prerequisites
+
+- An Amazon Redshift cluster
+- Database credentials (username/password or IAM authentication)
+- Network access to your Redshift cluster (configure security groups/VPC)
+
+## Authentication Methods
+
+Redash supports three authentication methods for Redshift:
+
+### 1. Standard Username/Password
+
+Direct connection using database credentials. Best for development and testing.
+
+### 2. IAM Database Authentication
+
+Use AWS IAM roles or users to generate temporary database passwords. This is the recommended method for production deployments.
+
+### 3. IAM Role Assumption
+
+Assumed IAM roles for cross-account access or enhanced security.
+
+## Configuration
+
+<Tabs>
+  <Tab title="Standard Authentication">
+    Use the standard Redshift data source for username/password authentication.
+
+    ### Required Settings
+
+    <ParamField path="host" type="string" required>
+      Redshift cluster endpoint (without port).
+      
+      Example: `my-cluster.abc123.us-east-1.redshift.amazonaws.com`
+    </ParamField>
+
+    <ParamField path="port" type="number" required>
+      Database port. Default is `5439` for Redshift.
+    </ParamField>
+
+    <ParamField path="user" type="string" required>
+      Database username (master user or database user).
+    </ParamField>
+
+    <ParamField path="password" type="string" required>
+      Database password.
+    </ParamField>
+
+    <ParamField path="dbname" type="string" required>
+      Name of the database to connect to.
+    </ParamField>
+
+    ### Optional Settings
+
+    <ParamField path="sslmode" type="string" default="prefer">
+      SSL/TLS connection mode. Options: `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`.
+      
+      Redshift uses a bundled CA certificate for SSL verification.
+    </ParamField>
+
+    <ParamField path="adhoc_query_group" type="string" default="default">
+      Query group for ad-hoc queries run manually by users. Use this to manage workload management (WLM) queues.
+    </ParamField>
+
+    <ParamField path="scheduled_query_group" type="string" default="default">
+      Query group for scheduled/automated queries. Allows separate WLM queue configuration for background jobs.
+    </ParamField>
+
+  </Tab>
+  <Tab title="IAM Authentication">
+    Use the Redshift (with IAM User/Role) data source for IAM-based authentication.
+
+    ### Required Settings
+
+    <ParamField path="host" type="string" required>
+      Redshift cluster endpoint (without port).
+    </ParamField>
+
+    <ParamField path="port" type="number" required>
+      Database port (typically `5439`).
+    </ParamField>
+
+    <ParamField path="user" type="string" required>
+      Database username. IAM will generate temporary credentials for this user.
+    </ParamField>
+
+    <ParamField path="dbname" type="string" required>
+      Name of the database to connect to.
+    </ParamField>
+
+    <ParamField path="clusterid" type="string" required>
+      Redshift cluster identifier (not the full endpoint).
+      
+      Example: `my-cluster`
+    </ParamField>
+
+    <ParamField path="aws_region" type="string" required>
+      AWS region where your Redshift cluster is located.
+      
+      Example: `us-east-1`
+    </ParamField>
+
+    ### Authentication Options
+
+    Choose one of the following authentication methods:
+
+    #### Option 1: IAM User Credentials
+
+    <ParamField path="aws_access_key_id" type="string">
+      AWS access key ID for an IAM user.
+    </ParamField>
+
+    <ParamField path="aws_secret_access_key" type="string">
+      AWS secret access key for an IAM user.
+    </ParamField>
+
+    #### Option 2: IAM Role (EC2/ECS/EKS)
+
+    Leave `aws_access_key_id` and `aws_secret_access_key` empty. Redash will use the IAM role attached to the EC2 instance, ECS task, or EKS pod.
+
+    #### Option 3: Assumed IAM Role
+
+    <ParamField path="rolename" type="string">
+      ARN of the IAM role to assume.
+      
+      Example: `arn:aws:iam::123456789012:role/RedshiftAccessRole`
+    </ParamField>
+
+    When `rolename` is set:
+    - If AWS credentials are provided, they will be used to assume the role
+    - If no credentials are provided, the current IAM role will assume the target role
+
+    ### Optional Settings
+
+    <ParamField path="sslmode" type="string" default="prefer">
+      SSL/TLS connection mode.
+    </ParamField>
+
+    <ParamField path="adhoc_query_group" type="string" default="default">
+      Query group for ad-hoc queries.
+    </ParamField>
+
+    <ParamField path="scheduled_query_group" type="string" default="default">
+      Query group for scheduled queries.
+    </ParamField>
+
+  </Tab>
+</Tabs>
+
+## IAM Permissions
+
+### For IAM Authentication
+
+The IAM user or role needs the following permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "redshift:GetClusterCredentials"
+      ],
+      "Resource": [
+        "arn:aws:redshift:us-east-1:123456789012:dbuser:my-cluster/${redshift:DbUser}",
+        "arn:aws:redshift:us-east-1:123456789012:dbname:my-cluster/mydb"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "redshift:DescribeClusters"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+### For Assumed Roles
+
+The source role must have permission to assume the target role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::123456789012:role/RedshiftAccessRole"
+    }
+  ]
+}
+```
+
+And the target role's trust policy must allow the source:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::123456789012:role/RedashRole"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+## Network Configuration
+
+### Security Groups
+
+Configure your Redshift cluster's security group to allow inbound traffic from Redash:
+
+1. Go to the **EC2 Console** > **Security Groups**
+2. Find your Redshift cluster's security group
+3. Add an inbound rule:
+   - **Type**: Custom TCP
+   - **Port**: `5439` (or your custom port)
+   - **Source**: Redash server IP or security group
+
+### VPC Configuration
+
+- **Publicly Accessible Cluster**: Set `Publicly accessible` to `Yes` in cluster settings
+- **VPC Peering**: Connect Redash VPC to Redshift VPC
+- **VPN/Direct Connect**: For on-premises Redash deployments
+
+## Query Groups & Workload Management
+
+Redshift uses query groups to route queries to different WLM (Workload Management) queues.
+
+### Setting Up Query Groups
+
+1. Configure WLM in the Redshift console
+2. Create query groups (e.g., `adhoc`, `scheduled`, `reporting`)
+3. Map query groups to queues with specific memory and concurrency settings
+
+### Using Query Groups in Redash
+
+Configure different groups for different query types:
+
+- **adhoc_query_group**: `adhoc` - Lower priority, more concurrency
+- **scheduled_query_group**: `scheduled` - Higher priority, guaranteed resources
+
+Redash automatically sets the query group before executing queries:
+
+```sql
+SET query_group TO scheduled;
+-- Your query follows
+```
+
+## Schema Browser
+
+Redash loads schema information from Redshift system tables:
+
+- Queries `svv_columns` for table and column metadata
+- Includes both internal and external (Spectrum) tables
+- Respects schema-level and table-level permissions
+- Filters out inaccessible objects using `HAS_SCHEMA_PRIVILEGE` and `HAS_TABLE_PRIVILEGE`
+
+## Query Features
+
+### Supported Data Types
+
+Redshift uses PostgreSQL-compatible types:
+
+- Integer types: `SMALLINT`, `INTEGER`, `BIGINT`
+- Floating-point: `REAL`, `DOUBLE PRECISION`, `DECIMAL`
+- Text: `CHAR`, `VARCHAR`, `TEXT`
+- Date/Time: `DATE`, `TIMESTAMP`, `TIMESTAMPTZ`
+- Boolean: `BOOLEAN`
+- Arrays and JSON
+
+### External Tables (Spectrum)
+
+Query data in S3 using external schemas:
+
+```sql
+SELECT *
+FROM spectrum.sales_data
+WHERE year = 2024
+  AND month = 1
+```
+
+External tables appear in the schema browser alongside regular tables.
+
+### Query Annotation
+
+Redash adds comments to queries with metadata:
+
+```sql
+/*
+ * Query ID: 12345
+ * User: user@example.com
+ * Scheduled: false
+ */
+SET query_group TO adhoc;
+SELECT * FROM users LIMIT 100;
+```
+
+## Performance Best Practices
+
+### Distribution Keys
+
+Design tables with appropriate distribution styles:
+
+```sql
+-- Check table distribution
+SELECT 
+  tablename,
+  diststyle 
+FROM 
+  pg_table_def
+WHERE 
+  schemaname = 'public';
+```
+
+### Sort Keys
+
+Use sort keys for commonly filtered columns:
+
+```sql
+-- Queries on date ranges benefit from date sort keys
+SELECT *
+FROM events
+WHERE event_date >= '2024-01-01'
+ORDER BY event_date;
+```
+
+### Vacuum and Analyze
+
+Schedule regular maintenance:
+
+```sql
+VACUUM FULL users;
+ANALYZE users;
+```
+
+### Query Monitoring
+
+Use system tables to monitor performance:
+
+```sql
+-- View running queries
+SELECT 
+  pid,
+  user_name,
+  query,
+  starttime
+FROM 
+  stv_recents
+WHERE 
+  status = 'Running';
+```
+
+## Troubleshooting
+
+### Connection Refused
+
+**Problem**: Cannot connect to Redshift cluster
+
+**Solutions**:
+1. Check security group allows traffic from Redash IP
+2. Verify cluster is in "Available" state
+3. Confirm VPC routing and network ACLs
+4. Check if cluster is publicly accessible (if needed)
+
+### IAM Authentication Fails
+
+**Problem**: `ERROR: IAM authentication failed`
+
+**Solutions**:
+1. Verify IAM permissions include `redshift:GetClusterCredentials`
+2. Check cluster ID matches configuration
+3. Ensure AWS region is correct
+4. For assumed roles, verify trust relationships
+
+### Query Timeout
+
+**Problem**: Queries timing out or running slowly
+
+**Solutions**:
+1. Check WLM queue configuration
+2. Review query execution plan with `EXPLAIN`
+3. Add appropriate sort and distribution keys
+4. Increase query timeout in Redash settings
+5. Use a dedicated WLM queue for Redash queries
+
+### Schema Browser Not Loading
+
+**Problem**: Tables don't appear in schema browser
+
+**Solutions**:
+1. Grant `SELECT` permission on tables
+2. Grant `USAGE` permission on schemas
+3. Check user has access to schemas (not `pg_catalog` or `information_schema`)
+
+### SSL Certificate Verification Failed
+
+**Problem**: SSL connection fails
+
+**Solution**: Redash includes AWS's Redshift CA bundle. If issues persist:
+1. Set `sslmode` to `require` instead of `verify-full`
+2. Check Redshift cluster SSL configuration
+
+## Example Queries
+
+### Basic Aggregation
+
+```sql
+SELECT 
+  DATE_TRUNC('day', created_at) as day,
+  COUNT(*) as user_count
+FROM 
+  users
+WHERE 
+  created_at >= CURRENT_DATE - 30
+GROUP BY 
+  1
+ORDER BY 
+  1;
+```
+
+### Window Functions
+
+```sql
+SELECT 
+  user_id,
+  order_date,
+  amount,
+  SUM(amount) OVER (
+    PARTITION BY user_id 
+    ORDER BY order_date
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) as running_total
+FROM 
+  orders;
+```
+
+### Querying Spectrum (External Tables)
+
+```sql
+SELECT 
+  s.product_id,
+  p.product_name,
+  SUM(s.quantity) as total_quantity
+FROM 
+  spectrum.sales s
+  JOIN public.products p ON s.product_id = p.id
+WHERE 
+  s.year = 2024
+GROUP BY 
+  1, 2;
+```
+
+## Additional Resources
+
+- [Redshift Documentation](https://docs.aws.amazon.com/redshift/)
+- [IAM Database Authentication](https://docs.aws.amazon.com/redshift/latest/mgmt/generating-user-credentials.html)
+- [Workload Management](https://docs.aws.amazon.com/redshift/latest/dg/c_workload_mngmt_classification.html)
+- [Best Practices](https://docs.aws.amazon.com/redshift/latest/dg/best-practices.html)

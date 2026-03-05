@@ -1,0 +1,220 @@
+---
+title: Prometheus
+description: Connect Redash to Prometheus for metrics monitoring and time-series analysis
+---
+
+## Overview
+
+The Prometheus data source allows you to query metrics from Prometheus servers directly in Redash. Prometheus is a popular open-source monitoring and alerting toolkit designed for reliability and scalability.
+
+## Setup
+
+### Prerequisites
+
+- A running Prometheus server
+- Access to the Prometheus HTTP API endpoint
+- (Optional) SSL certificates if using secure connections
+
+### Configuration
+
+When adding a Prometheus data source in Redash, you'll need to configure the following:
+
+<ParamField path="url" type="string" required>
+  The full URL to your Prometheus API endpoint (e.g., `http://localhost:9090` or `https://prometheus.example.com`)
+</ParamField>
+
+<ParamField path="verify_ssl" type="boolean" default="true">
+  Enable or disable SSL certificate verification. Ignored if an SSL Root Certificate is provided.
+</ParamField>
+
+<ParamField path="cert_File" type="string">
+  Base64-encoded SSL client certificate for mutual TLS authentication
+</ParamField>
+
+<ParamField path="cert_key_File" type="string">
+  Base64-encoded SSL client key corresponding to the client certificate
+</ParamField>
+
+<ParamField path="ca_cert_File" type="string">
+  Base64-encoded SSL root certificate for verifying the server's certificate
+</ParamField>
+
+## Authentication
+
+### Basic Connection
+
+For a basic connection to an unsecured Prometheus instance:
+
+```json
+{
+  "url": "http://localhost:9090"
+}
+```
+
+### SSL/TLS Connection
+
+For production environments with SSL enabled:
+
+```json
+{
+  "url": "https://prometheus.example.com",
+  "verify_ssl": true,
+  "ca_cert_File": "<base64-encoded-ca-cert>"
+}
+```
+
+### Mutual TLS (mTLS)
+
+For enhanced security with client certificates:
+
+```json
+{
+  "url": "https://prometheus.example.com",
+  "cert_File": "<base64-encoded-client-cert>",
+  "cert_key_File": "<base64-encoded-client-key>",
+  "ca_cert_File": "<base64-encoded-ca-cert>"
+}
+```
+
+## Query Syntax
+
+Prometheus queries in Redash use URL query string format. The query is based on the [Prometheus HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/).
+
+### Instant Query
+
+Query the current value of a metric:
+
+```
+query=http_requests_total
+```
+
+With label filtering:
+
+```
+query=http_requests_total{job="api-server",status="200"}
+```
+
+### Range Query
+
+Query metrics over a time range:
+
+```
+query=http_requests_total&start=2024-01-20T00:00:00.000Z&end=2024-01-25T00:00:00.000Z&step=60s
+```
+
+### Dynamic Range Query
+
+Query from a specific time until now:
+
+```
+query=http_requests_total&start=2024-01-20T00:00:00.000Z&step=60s
+```
+
+Or explicitly:
+
+```
+query=http_requests_total&start=2024-01-20T00:00:00.000Z&end=now&step=60s
+```
+
+## Query Examples
+
+### CPU Usage
+
+Monitor CPU usage across all instances:
+
+```
+query=rate(process_cpu_seconds_total[5m])&start=2024-03-01T00:00:00.000Z&step=5m
+```
+
+### Memory Usage
+
+Track memory consumption:
+
+```
+query=process_resident_memory_bytes&start=2024-03-01T00:00:00.000Z&end=now&step=1h
+```
+
+### HTTP Request Rate
+
+Calculate request rate per second:
+
+```
+query=rate(http_requests_total[1m])&start=2024-03-05T00:00:00.000Z&step=1m
+```
+
+### Aggregation
+
+Sum requests across all services:
+
+```
+query=sum(rate(http_requests_total[5m])) by (service)&start=2024-03-04T00:00:00.000Z&step=5m
+```
+
+### Availability Monitoring
+
+Check service uptime:
+
+```
+query=up{job="prometheus"}&start=2024-03-01T00:00:00.000Z&step=15m
+```
+
+## Use Cases
+
+### Infrastructure Monitoring
+
+Track server health metrics, resource utilization, and system performance across your infrastructure.
+
+### Application Performance Monitoring (APM)
+
+Monitor application-specific metrics like request latency, error rates, and throughput to identify performance bottlenecks.
+
+### Alerting and SLA Tracking
+
+Build dashboards that track service level indicators (SLIs) and service level objectives (SLOs) for your applications.
+
+### Capacity Planning
+
+Analyze historical trends in resource usage to forecast future capacity needs and optimize infrastructure costs.
+
+### Custom Business Metrics
+
+Visualize custom application metrics that track business KPIs, user engagement, or other domain-specific measurements.
+
+## Result Format
+
+Prometheus queries return results with the following columns:
+
+- `timestamp` (datetime): The timestamp of the metric data point
+- `value` (string): The metric value at that timestamp
+- Additional columns for each label associated with the metric (e.g., `job`, `instance`, `status`)
+
+## Tips
+
+- Use **instant queries** for current state snapshots
+- Use **range queries** for time-series analysis and trending
+- The `step` parameter controls the resolution of your data; smaller steps mean more data points
+- Combine Prometheus queries with Redash's visualization capabilities for powerful monitoring dashboards
+- Use PromQL functions like `rate()`, `increase()`, and `avg_over_time()` for advanced analytics
+
+## Troubleshooting
+
+### Empty Results
+
+If your query returns "query result is empty", verify:
+- The metric name exists in your Prometheus instance
+- The time range includes data points
+- Label filters match existing labels
+
+### SSL Certificate Errors
+
+For SSL issues:
+- Ensure certificates are properly base64-encoded
+- Verify the CA certificate matches your Prometheus server's certificate chain
+- Check that client certificates haven't expired
+
+### Connection Timeouts
+
+For timeout issues:
+- Verify the Prometheus URL is accessible from the Redash server
+- Check firewall rules and network connectivity
+- Consider reducing the query time range or increasing the step interval

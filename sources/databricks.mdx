@@ -1,0 +1,444 @@
+---
+title: Databricks
+description: Connect Redash to Databricks SQL Warehouse or All-Purpose Cluster
+---
+
+Databricks provides a unified analytics platform built on Apache Spark, offering SQL warehouses, data engineering, and machine learning capabilities.
+
+## Prerequisites
+
+- A Databricks workspace
+- A SQL Warehouse or All-Purpose Cluster with ODBC/JDBC enabled
+- Databricks personal access token
+- Simba ODBC driver installed on Redash server
+
+## Authentication
+
+Databricks uses personal access token authentication for Redash connections.
+
+### Generating a Personal Access Token
+
+1. Log in to your Databricks workspace
+2. Click your username in the top-right corner
+3. Select **User Settings**
+4. Go to the **Access Tokens** tab
+5. Click **Generate New Token**
+6. Set an optional comment and expiration time
+7. Click **Generate**
+8. Copy the token immediately (it won't be shown again)
+
+<Warning>
+  Store your access token securely. It provides full access to your Databricks workspace with your user permissions.
+</Warning>
+
+## Configuration
+
+### Required Settings
+
+<ParamField path="host" type="string" required>
+  Your Databricks workspace URL (without `https://`).
+  
+  Example: `dbc-12345678-abcd.cloud.databricks.com`
+  
+  Find this in your workspace URL or cluster/warehouse connection details.
+</ParamField>
+
+<ParamField path="http_path" type="string" required>
+  HTTP path to your SQL Warehouse or cluster.
+  
+  Examples:
+  - SQL Warehouse: `/sql/1.0/warehouses/abc123def456`
+  - Cluster: `/sql/protocolv1/o/1234567890123456/0123-456789-test123`
+  
+  Find this in:
+  - **SQL Warehouses**: Click warehouse → **Connection Details** → **HTTP Path**
+  - **Clusters**: Click cluster → **Advanced Options** → **JDBC/ODBC** → **HTTP Path**
+</ParamField>
+
+<ParamField path="http_password" type="string" required>
+  Your Databricks personal access token.
+  
+  Despite the parameter name, this is your token, not a password.
+</ParamField>
+
+## Finding Connection Details
+
+### For SQL Warehouses (Recommended)
+
+1. Go to **SQL Warehouses** in your Databricks workspace
+2. Click on your SQL warehouse
+3. Go to **Connection Details** tab
+4. Copy:
+   - **Server hostname** → Use as `host` (remove `https://`)
+   - **HTTP path** → Use as `http_path`
+
+### For All-Purpose Clusters
+
+1. Go to **Compute** in your Databricks workspace
+2. Click on your cluster
+3. Go to **Advanced Options** → **JDBC/ODBC**
+4. Copy:
+   - **Server hostname** → Use as `host`
+   - **HTTP path** → Use as `http_path`
+
+<Note>
+  SQL Warehouses are recommended over All-Purpose Clusters for BI tools like Redash. They provide better auto-scaling, auto-termination, and are optimized for SQL queries.
+</Note>
+
+## SQL Warehouses vs Clusters
+
+### SQL Warehouses (Recommended)
+
+**Pros**:
+- Optimized for SQL queries and BI tools
+- Better auto-scaling and auto-termination
+- Lower cost for query workloads
+- Faster startup times
+- Built-in query result caching
+
+**Best for**: Dashboards, reports, and ad-hoc analytics
+
+### All-Purpose Clusters
+
+**Pros**:
+- Support for custom libraries and configurations
+- Access to notebook-defined functions and tables
+- More control over Spark settings
+
+**Best for**: Development, data science workflows, custom Spark code
+
+## Schema Browser
+
+The Databricks query runner provides custom schema browsing methods:
+
+### Get Databases
+
+Retrieves all databases (schemas) the user has access to using `SHOW DATABASES`.
+
+### Get Tables
+
+Retrieves tables in a specific database using ODBC `tables()` method.
+
+### Get Tables with Columns
+
+Retrieves both tables and their columns using ODBC `columns()` method.
+
+<Note>
+  Due to ODBC limitations, the standard `get_schema()` method is not supported. Use the workspace UI or SQL to explore schema.
+</Note>
+
+## Query Features
+
+### Supported Data Types
+
+Databricks SQL types are mapped to Redash types:
+
+- **String**: `STRING`, `VARCHAR`, `CHAR`
+- **Numeric**: `INT`, `BIGINT`, `SMALLINT`, `TINYINT`, `FLOAT`, `DOUBLE`, `DECIMAL`
+- **Boolean**: `BOOLEAN`
+- **Date/Time**: `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`
+- **Complex**: `ARRAY`, `MAP`, `STRUCT` (returned as JSON strings)
+- **Binary**: `BINARY`
+
+### Result Set Limits
+
+By default, queries are limited to **20,000 rows** to prevent memory issues.
+
+Control this with the `DATABRICKS_ROW_LIMIT` environment variable:
+
+```bash
+export DATABRICKS_ROW_LIMIT=50000
+```
+
+If a query result is truncated, you'll see a warning in the query result metadata.
+
+### Multi-Statement Queries
+
+Databricks supports executing multiple SQL statements in a single query:
+
+```sql
+USE my_database;
+
+CREATE TEMP VIEW recent_orders AS
+SELECT * FROM orders WHERE order_date >= CURRENT_DATE() - 7;
+
+SELECT 
+  product_id,
+  COUNT(*) as order_count,
+  SUM(amount) as revenue
+FROM recent_orders
+GROUP BY product_id;
+```
+
+Only the last statement's results are returned to Redash.
+
+### Delta Lake Features
+
+Query Delta tables with time travel and versioning:
+
+```sql
+-- Query current version
+SELECT * FROM events;
+
+-- Query specific version
+SELECT * FROM events VERSION AS OF 5;
+
+-- Query at specific timestamp
+SELECT * FROM events TIMESTAMP AS OF '2024-01-15';
+
+-- View table history
+DESCRIBE HISTORY events;
+```
+
+## Performance Optimization
+
+### Warehouse Sizing
+
+Choose appropriate SQL warehouse sizes:
+
+- **2X-Small**: Development, testing
+- **X-Small**: Light dashboards, simple queries
+- **Small**: Standard dashboards and reports
+- **Medium/Large**: Complex analytics, many concurrent users
+- **X-Large+**: Heavy analytical workloads
+
+### Caching
+
+**Photon Acceleration**: Enable Photon on your SQL warehouse for 3-5x performance improvements:
+
+1. Edit your SQL warehouse
+2. Enable **Photon Acceleration**
+3. Save changes
+
+**Query Result Caching**: Databricks automatically caches query results. Combine with Redash query caching for optimal performance.
+
+### Query Optimization
+
+1. **Use Partitioning**: Filter on partition columns
+   ```sql
+   SELECT * FROM events
+   WHERE date = '2024-01-15'  -- Partition column
+   ```
+
+2. **Optimize Delta Tables**:
+   ```sql
+   OPTIMIZE events ZORDER BY (user_id, event_type);
+   ```
+
+3. **Use Z-Ordering**: Co-locate related data
+   ```sql
+   OPTIMIZE events ZORDER BY (date, user_id);
+   ```
+
+4. **Vacuum Old Files**:
+   ```sql
+   VACUUM events RETAIN 168 HOURS;  -- 7 days
+   ```
+
+## Unity Catalog
+
+If using Unity Catalog, use three-part naming:
+
+```sql
+SELECT * FROM catalog.schema.table;
+```
+
+Grant permissions at the catalog or schema level:
+
+```sql
+-- Grant access to catalog
+GRANT USE CATALOG ON CATALOG my_catalog TO `user@example.com`;
+GRANT USE SCHEMA ON SCHEMA my_catalog.my_schema TO `user@example.com`;
+GRANT SELECT ON SCHEMA my_catalog.my_schema TO `user@example.com`;
+
+-- Grant access to specific table
+GRANT SELECT ON TABLE my_catalog.my_schema.my_table TO `user@example.com`;
+```
+
+## Troubleshooting
+
+### Connection Failed: "Could not connect"
+
+**Problem**: Unable to connect to Databricks
+
+**Solutions**:
+1. Verify `host` doesn't include `https://` or trailing slashes
+2. Check `http_path` matches the format for your warehouse/cluster type
+3. Confirm access token is valid and hasn't expired
+4. Ensure SQL warehouse or cluster is running
+5. Check network connectivity from Redash server
+
+### "Simba" Driver Not Found
+
+**Problem**: `Driver "Simba" not found in drivers list`
+
+**Solution**: Install the Simba ODBC driver on your Redash server:
+
+```bash
+# Download from Databricks or Simba website
+# For Debian/Ubuntu:
+sudo dpkg -i simba-spark-odbc_*.deb
+
+# Verify installation
+odbcinst -q -d
+```
+
+Ensure the driver name in `/etc/odbcinst.ini` is "Simba".
+
+### Token Authentication Failed
+
+**Problem**: `[Simba][Hardy] (35) Error from server: UNAUTHENTICATED`
+
+**Solutions**:
+1. Regenerate access token in Databricks
+2. Check token hasn't expired
+3. Verify you're using the token in `http_password` field
+4. Ensure token has appropriate workspace access
+
+### Query Timeout
+
+**Problem**: Queries timing out on large result sets
+
+**Solutions**:
+1. Increase warehouse size for better performance
+2. Optimize query with filters and aggregations
+3. Increase Redash query timeout setting
+4. Use `LIMIT` for exploratory queries
+5. Consider scheduled queries for large exports
+
+### Results Truncated
+
+**Problem**: Warning that results were truncated
+
+**Solutions**:
+1. Add `LIMIT` clause to reduce result set
+2. Increase `DATABRICKS_ROW_LIMIT` environment variable
+3. Use aggregations instead of returning raw data
+4. Export large datasets using Databricks export features
+
+### Schema Browser Empty
+
+**Problem**: No databases or tables showing in schema browser
+
+**Solutions**:
+1. Grant `USE CATALOG` and `USE SCHEMA` permissions
+2. Grant `SELECT` on tables/views
+3. Ensure SQL warehouse or cluster is running
+4. Check Unity Catalog permissions if applicable
+
+### "Method not supported"
+
+**Problem**: `NotSupported: get_schema is not supported`
+
+**Explanation**: The Databricks ODBC driver has limited schema introspection. This is expected behavior.
+
+**Workaround**: Use `SHOW DATABASES`, `SHOW TABLES`, and `DESCRIBE TABLE` in queries to explore schema.
+
+## Example Queries
+
+### Basic Analytics
+
+```sql
+SELECT 
+  DATE_TRUNC('day', event_timestamp) as day,
+  event_type,
+  COUNT(*) as event_count
+FROM 
+  events
+WHERE 
+  event_timestamp >= CURRENT_DATE() - INTERVAL 30 DAYS
+GROUP BY 
+  1, 2
+ORDER BY 
+  1 DESC, 3 DESC;
+```
+
+### Working with Arrays and Structs
+
+```sql
+SELECT 
+  user_id,
+  transaction.amount,
+  transaction.currency,
+  explode(items) as item
+FROM 
+  purchases
+WHERE 
+  transaction.amount > 100;
+```
+
+### Delta Lake Time Travel
+
+```sql
+-- Compare current vs previous version
+SELECT 
+  current.id,
+  current.value as current_value,
+  previous.value as previous_value
+FROM 
+  my_table current
+  LEFT JOIN my_table VERSION AS OF 5 previous
+    ON current.id = previous.id
+WHERE 
+  current.value != previous.value;
+```
+
+### Window Functions
+
+```sql
+SELECT 
+  customer_id,
+  order_date,
+  amount,
+  ROW_NUMBER() OVER (
+    PARTITION BY customer_id 
+    ORDER BY order_date DESC
+  ) as order_recency,
+  SUM(amount) OVER (
+    PARTITION BY customer_id
+  ) as lifetime_value
+FROM 
+  orders;
+```
+
+## Best Practices
+
+1. **Use SQL Warehouses**: Preferred over All-Purpose Clusters for BI workloads
+
+2. **Enable Photon**: Significant performance boost for most queries
+
+3. **Token Management**:
+   - Set reasonable expiration times (e.g., 90 days)
+   - Rotate tokens regularly
+   - Use service principals for production systems
+
+4. **Auto-Termination**: Configure SQL warehouses to auto-stop when idle
+   ```
+   Auto-stop: 10-15 minutes for active dashboards
+   Auto-stop: 5 minutes for ad-hoc queries
+   ```
+
+5. **Query Optimization**:
+   - Use partition pruning
+   - Run `OPTIMIZE` on frequently queried tables
+   - Apply Z-ordering on filter/join columns
+
+6. **Cost Management**:
+   - Use smallest warehouse size that meets performance needs
+   - Enable auto-scaling for variable workloads
+   - Monitor query costs in Databricks SQL Query History
+
+7. **Security**:
+   - Use Unity Catalog for fine-grained access control
+   - Implement row-level and column-level security
+   - Audit access with system tables
+
+8. **Result Size**: Be mindful of result set limits. Use aggregations and filters to reduce data volume
+
+## Additional Resources
+
+- [Databricks SQL Documentation](https://docs.databricks.com/sql/index.html)
+- [SQL Warehouses Guide](https://docs.databricks.com/sql/admin/sql-endpoints.html)
+- [Delta Lake Documentation](https://docs.databricks.com/delta/index.html)
+- [Unity Catalog](https://docs.databricks.com/data-governance/unity-catalog/index.html)
+- [Query Optimization](https://docs.databricks.com/optimizations/index.html)

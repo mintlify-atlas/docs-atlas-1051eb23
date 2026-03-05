@@ -1,0 +1,288 @@
+---
+title: Google Analytics
+description: Connect Redash to Google Analytics for web analytics and user behavior insights
+---
+
+## Overview
+
+The Google Analytics data source enables you to query your Google Analytics data directly in Redash, allowing you to create custom reports and dashboards beyond what's available in the Google Analytics interface.
+
+## Setup
+
+### Prerequisites
+
+- A Google Analytics account with data
+- Access to the Google Analytics Reporting API
+- A Google Cloud project with the Analytics Reporting API enabled
+- Service account credentials OR Application Default Credentials (ADC)
+
+### Creating a Service Account
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the **Analytics Reporting API v3**
+4. Create a service account:
+   - Navigate to **IAM & Admin > Service Accounts**
+   - Click **Create Service Account**
+   - Grant the service account access to your project
+   - Create a JSON key file
+5. Add the service account email to your Google Analytics property with **Read & Analyze** permissions
+
+### Configuration
+
+<ParamField path="jsonKeyFile" type="string">
+  Base64-encoded JSON key file from your Google service account. If omitted, Application Default Credentials (ADC) will be used.
+</ParamField>
+
+<Info>
+The service account must have read access to the Google Analytics views you want to query.
+</Info>
+
+## Authentication
+
+### Using Service Account Key
+
+1. Download your service account JSON key file
+2. Base64-encode the file contents
+3. Add the encoded string to the `jsonKeyFile` configuration field
+
+```bash
+# Encode the key file
+base64 -i service-account-key.json
+```
+
+### Using Application Default Credentials
+
+If you're running Redash in Google Cloud Platform, you can omit the `jsonKeyFile` field and use ADC. The service account associated with your compute instance must have Analytics Reporting API access.
+
+## Query Syntax
+
+Google Analytics queries can be written in two formats:
+
+### JSON Format (Recommended)
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "30daysAgo",
+  "end_date": "yesterday",
+  "metrics": "ga:sessions,ga:pageviews,ga:users",
+  "dimensions": "ga:date,ga:country"
+}
+```
+
+### URL Query String Format
+
+```
+ids=ga:123456789&start-date=30daysAgo&end-date=yesterday&metrics=ga:sessions,ga:pageviews&dimensions=ga:date
+```
+
+<Note>
+URL query string format automatically converts hyphens to underscores for parameter names.
+</Note>
+
+## Query Parameters
+
+### Required Parameters
+
+<ParamField path="ids" type="string" required>
+  The Analytics view ID (format: `ga:XXXXXXXX`). Find this in Google Analytics under Admin > View Settings.
+</ParamField>
+
+<ParamField path="start_date" type="string" required>
+  Start date for fetching data. Use format `YYYY-MM-DD` or relative dates like `30daysAgo`, `yesterday`, `today`.
+</ParamField>
+
+<ParamField path="end_date" type="string" required>
+  End date for fetching data. Use format `YYYY-MM-DD` or relative dates.
+</ParamField>
+
+<ParamField path="metrics" type="string" required>
+  Comma-separated list of metrics (e.g., `ga:sessions,ga:pageviews,ga:bounceRate`)
+</ParamField>
+
+### Optional Parameters
+
+<ParamField path="dimensions" type="string">
+  Comma-separated list of dimensions (e.g., `ga:date,ga:source,ga:medium`)
+</ParamField>
+
+<ParamField path="filters" type="string">
+  Dimension or metric filters (e.g., `ga:country==United States`)
+</ParamField>
+
+<ParamField path="segment" type="string">
+  Segment ID to apply to the query
+</ParamField>
+
+<ParamField path="sort" type="string">
+  Comma-separated list of dimensions/metrics to sort by (prefix with `-` for descending)
+</ParamField>
+
+<ParamField path="max_results" type="integer">
+  Maximum number of rows to return
+</ParamField>
+
+## Query Examples
+
+### Daily Traffic Overview
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "30daysAgo",
+  "end_date": "yesterday",
+  "metrics": "ga:sessions,ga:users,ga:pageviews,ga:bounceRate",
+  "dimensions": "ga:date"
+}
+```
+
+### Traffic by Source and Medium
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "7daysAgo",
+  "end_date": "today",
+  "metrics": "ga:sessions,ga:users,ga:newUsers",
+  "dimensions": "ga:source,ga:medium",
+  "sort": "-ga:sessions"
+}
+```
+
+### Top Landing Pages
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "30daysAgo",
+  "end_date": "yesterday",
+  "metrics": "ga:sessions,ga:bounceRate,ga:avgSessionDuration",
+  "dimensions": "ga:landingPagePath",
+  "sort": "-ga:sessions",
+  "max_results": 50
+}
+```
+
+### Geographic Distribution
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "30daysAgo",
+  "end_date": "yesterday",
+  "metrics": "ga:sessions,ga:users",
+  "dimensions": "ga:country,ga:city",
+  "sort": "-ga:sessions"
+}
+```
+
+### Conversion Tracking
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "30daysAgo",
+  "end_date": "yesterday",
+  "metrics": "ga:goal1Completions,ga:goal1ConversionRate,ga:goal1Value",
+  "dimensions": "ga:date,ga:source"
+}
+```
+
+### Device Category Analysis
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "30daysAgo",
+  "end_date": "yesterday",
+  "metrics": "ga:sessions,ga:bounceRate,ga:pageviewsPerSession",
+  "dimensions": "ga:deviceCategory"
+}
+```
+
+## Multi-Channel Funnels (MCF)
+
+Query conversion path data using MCF metrics and dimensions:
+
+```json
+{
+  "ids": "ga:123456789",
+  "start_date": "30daysAgo",
+  "end_date": "yesterday",
+  "metrics": "mcf:totalConversions,mcf:totalConversionValue",
+  "dimensions": "mcf:sourcePath"
+}
+```
+
+<Warning>
+You cannot mix `ga:` and `mcf:` metrics or dimensions in the same query. They use different API endpoints.
+</Warning>
+
+## Use Cases
+
+### Marketing Performance Dashboards
+
+Create custom dashboards that combine Google Analytics data with advertising spend data from other sources to calculate ROI and ROAS.
+
+### Executive Reporting
+
+Build automated weekly or monthly reports that pull key metrics and trends without manual data export.
+
+### A/B Test Analysis
+
+Analyze the performance of different page variants or campaigns by segmenting Google Analytics data.
+
+### Custom Attribution Models
+
+Combine multi-channel funnel data with conversion data to build custom attribution models beyond Google Analytics' built-in options.
+
+### User Behavior Analysis
+
+Track user journeys, page flows, and engagement patterns to optimize user experience.
+
+### Content Performance
+
+Analyze which content drives engagement, conversions, and revenue across your digital properties.
+
+## Data Types
+
+The query runner automatically detects and converts data types:
+
+- **Date fields** (`ga:date`, `mcf:conversionDate`): Converted to DATE type
+- **DateTime fields** (`ga:dateHour`): Converted to DATETIME type
+- **Numeric fields**: Converted to INTEGER or FLOAT based on metric type
+- **String fields**: All other dimensions
+
+## Tips
+
+- Find your View ID in Google Analytics under **Admin > View Settings > View ID**
+- Use the [Dimensions & Metrics Explorer](https://ga-dev-tools.web.app/dimensions-metrics-explorer/) to find available fields
+- Test queries with small date ranges first to ensure correct syntax
+- Use relative date ranges (`30daysAgo`, `yesterday`) for dynamic, recurring queries
+- The `friendly_name` column removes the `ga:` or `mcf:` prefix for cleaner visualization
+
+## Troubleshooting
+
+### Authentication Errors
+
+- Verify the service account has been added to your Google Analytics property
+- Ensure the JSON key file is correctly base64-encoded
+- Check that the Analytics Reporting API is enabled in your Google Cloud project
+
+### "Can't mix mcf: and ga: metrics"
+
+Separate your queries into standard Analytics (ga:) and Multi-Channel Funnels (mcf:) queries.
+
+### No Data Returned
+
+- Verify the View ID is correct (format: `ga:123456789`)
+- Check that the date range includes data
+- Ensure metrics and dimensions are compatible (use the Dimensions & Metrics Explorer)
+
+### API Quota Limits
+
+Google Analytics API has quota limits. For high-frequency queries, consider:
+- Caching query results in Redash
+- Reducing query frequency
+- Requesting a quota increase from Google

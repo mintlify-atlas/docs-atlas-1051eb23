@@ -1,0 +1,644 @@
+---
+title: Installation Guide
+description: Deploy Redash in production using Docker and docker-compose
+---
+
+This guide covers installing Redash for production use. Redash is distributed as Docker images, making deployment straightforward across different platforms.
+
+## System Requirements
+
+### Minimum Requirements
+
+- **CPU**: 2 cores
+- **RAM**: 4GB (2GB minimum)
+- **Storage**: 10GB free disk space
+- **OS**: Linux (Ubuntu 20.04+ recommended), macOS, or Windows with WSL2
+
+### Software Dependencies
+
+- Docker 20.10 or later
+- Docker Compose 2.0 or later
+- Internet connection for initial setup
+
+<Warning>
+  For production deployments handling significant load, we recommend at least 4 CPU cores and 8GB of RAM.
+</Warning>
+
+## Architecture Components
+
+A Redash installation consists of the following services:
+
+| Service | Purpose | Required |
+|---------|---------|----------|
+| **server** | Web application and REST API | Yes |
+| **worker** | Background job execution | Yes |
+| **scheduler** | Manages scheduled queries and alerts | Yes |
+| **redis** | Message queue and caching | Yes |
+| **postgres** | Metadata storage | Yes |
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="Docker Compose (Recommended)">
+    ### Using the Official Setup Script
+    
+    The easiest way to install Redash is using the official setup repository:
+    
+    <Steps>
+      <Step title="Download Setup Files">
+        ```bash
+        git clone https://github.com/getredash/setup.git redash-setup
+        cd redash-setup
+        ```
+      </Step>
+      
+      <Step title="Run Setup Script">
+        ```bash
+        ./setup.sh
+        ```
+        
+        The script will:
+        - Install Docker and Docker Compose (if needed)
+        - Create necessary directories
+        - Generate secure secrets
+        - Create environment configuration
+        - Set up docker-compose.yml
+        - Initialize the database
+      </Step>
+      
+      <Step title="Start Services">
+        ```bash
+        docker compose up -d
+        ```
+      </Step>
+      
+      <Step title="Access Redash">
+        Navigate to `http://your-server-ip` in your browser to complete setup.
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="Manual Docker Compose">
+    ### Manual Installation
+    
+    For more control over the installation:
+    
+    <Steps>
+      <Step title="Create Project Directory">
+        ```bash
+        mkdir -p /opt/redash
+        cd /opt/redash
+        ```
+      </Step>
+      
+      <Step title="Create docker-compose.yml">
+        Create a production-ready `docker-compose.yml`:
+        
+        ```yaml docker-compose.yml
+        version: "3.8"
+        
+        x-redash-service: &redash-service
+          image: redash/redash:latest
+          depends_on:
+            - postgres
+            - redis
+          env_file: .env
+          restart: unless-stopped
+        
+        x-redash-environment: &redash-environment
+          REDASH_LOG_LEVEL: "INFO"
+          REDASH_REDIS_URL: "redis://redis:6379/0"
+          REDASH_DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD}@postgres/postgres"
+          REDASH_COOKIE_SECRET: ${REDASH_COOKIE_SECRET}
+          REDASH_SECRET_KEY: ${REDASH_SECRET_KEY}
+          REDASH_WEB_WORKERS: 4
+        
+        services:
+          server:
+            <<: *redash-service
+            command: server
+            ports:
+              - "5000:5000"
+            environment:
+              <<: *redash-environment
+              REDASH_HOST: ${REDASH_HOST}
+          
+          scheduler:
+            <<: *redash-service
+            command: scheduler
+            environment:
+              <<: *redash-environment
+          
+          worker:
+            <<: *redash-service
+            command: worker
+            environment:
+              <<: *redash-environment
+              WORKERS_COUNT: 2
+          
+          redis:
+            image: redis:7-alpine
+            restart: unless-stopped
+            volumes:
+              - redis-data:/data
+          
+          postgres:
+            image: postgres:15-alpine
+            restart: unless-stopped
+            environment:
+              POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+            volumes:
+              - postgres-data:/var/lib/postgresql/data
+        
+        volumes:
+          postgres-data:
+          redis-data:
+        ```
+      </Step>
+      
+      <Step title="Create Environment File">
+        Create a `.env` file with required configuration:
+        
+        ```bash .env
+        # Generate secrets with: openssl rand -base64 32
+        REDASH_COOKIE_SECRET=your-cookie-secret-here
+        REDASH_SECRET_KEY=your-secret-key-here
+        POSTGRES_PASSWORD=your-postgres-password-here
+        
+        # Your Redash URL
+        REDASH_HOST=https://redash.example.com
+        
+        # Optional: Database connection pooling
+        SQLALCHEMY_POOL_SIZE=5
+        SQLALCHEMY_MAX_OVERFLOW=10
+        
+        # Optional: Enable query result cleanup
+        REDASH_QUERY_RESULTS_CLEANUP_ENABLED=true
+        REDASH_QUERY_RESULTS_CLEANUP_MAX_AGE=7
+        ```
+        
+        <Warning>
+          Generate unique secrets using `openssl rand -base64 32`. Never use the example values in production.
+        </Warning>
+      </Step>
+      
+      <Step title="Initialize Database">
+        ```bash
+        docker compose run --rm server create_db
+        ```
+      </Step>
+      
+      <Step title="Start All Services">
+        ```bash
+        docker compose up -d
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Environment Configuration
+
+### Required Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|----------|
+| `REDASH_COOKIE_SECRET` | Secret for cookie encryption | Generated via `openssl rand -base64 32` |
+| `REDASH_SECRET_KEY` | Secret for data source encryption | Generated via `openssl rand -base64 32` |
+| `REDASH_DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@host/db` |
+| `REDASH_REDIS_URL` | Redis connection string | `redis://redis:6379/0` |
+
+<Note>
+  If `REDASH_SECRET_KEY` is not set, it defaults to `REDASH_COOKIE_SECRET`. For enhanced security, use different values.
+</Note>
+
+### Important Optional Settings
+
+```bash .env
+# Web server configuration
+REDASH_WEB_WORKERS=4
+REDASH_GUNICORN_TIMEOUT=60
+
+# Background workers
+WORKERS_COUNT=2
+
+# Query execution limits (seconds, -1 for unlimited)
+REDASH_ADHOC_QUERY_TIME_LIMIT=300
+REDASH_SCHEDULED_QUERY_TIME_LIMIT=-1
+
+# Email configuration
+REDASH_MAIL_SERVER=smtp.example.com
+REDASH_MAIL_PORT=587
+REDASH_MAIL_USE_TLS=true
+REDASH_MAIL_USERNAME=your-email@example.com
+REDASH_MAIL_PASSWORD=your-password
+REDASH_MAIL_DEFAULT_SENDER=redash@example.com
+
+# Security
+REDASH_ENFORCE_HTTPS=true
+REDASH_ENFORCE_CSRF=true
+REDASH_COOKIES_SECURE=true
+
+# Rate limiting
+REDASH_RATELIMIT_ENABLED=true
+REDASH_THROTTLE_LOGIN_PATTERN=50/hour
+
+# Multi-organization
+REDASH_MULTI_ORG=false
+```
+
+## SSL/HTTPS Configuration
+
+### Using a Reverse Proxy (Recommended)
+
+Deploy Redash behind Nginx or Traefik for SSL termination:
+
+<Tabs>
+  <Tab title="Nginx">
+    ```nginx /etc/nginx/sites-available/redash
+    upstream redash {
+        server 127.0.0.1:5000;
+    }
+    
+    server {
+        listen 80;
+        server_name redash.example.com;
+        return 301 https://$server_name$request_uri;
+    }
+    
+    server {
+        listen 443 ssl http2;
+        server_name redash.example.com;
+        
+        ssl_certificate /etc/letsencrypt/live/redash.example.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/redash.example.com/privkey.pem;
+        
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        
+        client_max_body_size 50M;
+        
+        location / {
+            proxy_pass http://redash;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+    ```
+    
+    Enable and restart Nginx:
+    ```bash
+    sudo ln -s /etc/nginx/sites-available/redash /etc/nginx/sites-enabled/
+    sudo nginx -t
+    sudo systemctl reload nginx
+    ```
+  </Tab>
+  
+  <Tab title="Traefik">
+    Add labels to your docker-compose.yml:
+    
+    ```yaml
+    services:
+      server:
+        labels:
+          - "traefik.enable=true"
+          - "traefik.http.routers.redash.rule=Host(`redash.example.com`)"
+          - "traefik.http.routers.redash.entrypoints=websecure"
+          - "traefik.http.routers.redash.tls.certresolver=letsencrypt"
+          - "traefik.http.services.redash.loadbalancer.server.port=5000"
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Use [Let's Encrypt](https://letsencrypt.org/) with Certbot for free SSL certificates.
+</Tip>
+
+## Authentication Setup
+
+### Google OAuth
+
+<Steps>
+  <Step title="Create OAuth Credentials">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+    2. Create a new project or select existing
+    3. Navigate to **APIs & Services** → **Credentials**
+    4. Click **Create Credentials** → **OAuth client ID**
+    5. Set application type to **Web application**
+    6. Add authorized redirect URI: `https://redash.example.com/oauth/google_callback`
+  </Step>
+  
+  <Step title="Configure Redash">
+    Add to your `.env` file:
+    
+    ```bash
+    REDASH_GOOGLE_CLIENT_ID=your-client-id
+    REDASH_GOOGLE_CLIENT_SECRET=your-client-secret
+    ```
+  </Step>
+  
+  <Step title="Restart Services">
+    ```bash
+    docker compose restart server
+    ```
+  </Step>
+</Steps>
+
+### LDAP/Active Directory
+
+```bash .env
+REDASH_LDAP_LOGIN_ENABLED=true
+REDASH_LDAP_URL=ldap://ldap.example.com:389
+REDASH_LDAP_BIND_DN=cn=admin,dc=example,dc=com
+REDASH_LDAP_BIND_DN_PASSWORD=admin-password
+REDASH_LDAP_SEARCH_DN=ou=users,dc=example,dc=com
+REDASH_LDAP_SEARCH_TEMPLATE=(uid=%(username)s)
+REDASH_LDAP_EMAIL_KEY=mail
+REDASH_LDAP_DISPLAY_NAME_KEY=displayName
+```
+
+<Note>
+  LDAP support requires the `ldap3` Python package, which is disabled by default due to GPL license conflicts. You'll need to build a custom Docker image with LDAP support.
+</Note>
+
+## Database Backup & Restore
+
+### Backup
+
+```bash
+# Backup PostgreSQL data
+docker compose exec postgres pg_dump -U postgres postgres > redash_backup_$(date +%Y%m%d).sql
+
+# Or backup the entire volume
+docker run --rm \
+  -v redash_postgres-data:/source \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/redash_postgres_$(date +%Y%m%d).tar.gz -C /source .
+```
+
+### Restore
+
+```bash
+# Restore from SQL dump
+cat redash_backup_20260305.sql | docker compose exec -T postgres psql -U postgres postgres
+
+# Or restore volume backup
+docker run --rm \
+  -v redash_postgres-data:/target \
+  -v $(pwd):/backup \
+  alpine sh -c "cd /target && tar xzf /backup/redash_postgres_20260305.tar.gz"
+```
+
+<Warning>
+  Always test your backup and restore procedures regularly. Stop Redash services before restoring.
+</Warning>
+
+## Monitoring & Logging
+
+### View Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f server
+docker compose logs -f worker
+
+# Last 100 lines
+docker compose logs --tail=100 server
+```
+
+### Health Checks
+
+```bash
+# Check service status
+docker compose ps
+
+# Check worker health
+docker compose exec worker workers_healthcheck
+
+# Database connection
+docker compose exec server ./manage.py database check
+```
+
+### Metrics Integration
+
+Redash supports StatsD for metrics:
+
+```bash .env
+REDASH_STATSD_HOST=statsd-server
+REDASH_STATSD_PORT=8125
+REDASH_STATSD_PREFIX=redash
+REDASH_STATSD_USE_TAGS=false
+```
+
+## Upgrading Redash
+
+<Steps>
+  <Step title="Backup Your Data">
+    Always backup before upgrading:
+    ```bash
+    docker compose exec postgres pg_dump -U postgres postgres > backup_before_upgrade.sql
+    ```
+  </Step>
+  
+  <Step title="Pull Latest Images">
+    ```bash
+    docker compose pull
+    ```
+  </Step>
+  
+  <Step title="Stop Services">
+    ```bash
+    docker compose down
+    ```
+  </Step>
+  
+  <Step title="Run Database Migrations">
+    ```bash
+    docker compose run --rm server manage db upgrade
+    ```
+  </Step>
+  
+  <Step title="Start Services">
+    ```bash
+    docker compose up -d
+    ```
+  </Step>
+  
+  <Step title="Verify">
+    Check that all services are running:
+    ```bash
+    docker compose ps
+    docker compose logs -f
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Redash releases stable versions every 3-4 months. Check the [changelog](https://github.com/getredash/redash/blob/master/CHANGELOG.md) before upgrading.
+</Note>
+
+## Performance Tuning
+
+### PostgreSQL Optimization
+
+For the Redash metadata database, add to your docker-compose.yml:
+
+```yaml
+postgres:
+  image: postgres:15-alpine
+  command: postgres -c shared_buffers=256MB -c max_connections=200
+  environment:
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+```
+
+### Worker Scaling
+
+Increase worker count for heavy query loads:
+
+```bash .env
+WORKERS_COUNT=4
+```
+
+Or run multiple worker containers:
+
+```yaml docker-compose.yml
+worker:
+  <<: *redash-service
+  command: worker
+  deploy:
+    replicas: 3
+```
+
+### Redis Optimization
+
+```yaml
+redis:
+  image: redis:7-alpine
+  command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Server won't start - REDASH_COOKIE_SECRET error">
+    This error occurs when the required secret is missing:
+    
+    ```bash
+    # Generate a secure secret
+    echo "REDASH_COOKIE_SECRET=$(openssl rand -base64 32)" >> .env
+    
+    # Restart services
+    docker compose up -d
+    ```
+  </Accordion>
+  
+  <Accordion title="Workers not processing jobs">
+    Check worker logs:
+    ```bash
+    docker compose logs worker
+    ```
+    
+    Verify Redis connectivity:
+    ```bash
+    docker compose exec worker env | grep REDIS
+    docker compose exec redis redis-cli ping
+    ```
+    
+    Restart workers:
+    ```bash
+    docker compose restart worker scheduler
+    ```
+  </Accordion>
+  
+  <Accordion title="High memory usage">
+    Adjust worker count and web worker settings:
+    ```bash
+    REDASH_WEB_WORKERS=2
+    WORKERS_COUNT=1
+    ```
+    
+    Enable query result cleanup:
+    ```bash
+    REDASH_QUERY_RESULTS_CLEANUP_ENABLED=true
+    REDASH_QUERY_RESULTS_CLEANUP_MAX_AGE=7
+    ```
+  </Accordion>
+  
+  <Accordion title="Database connection errors">
+    Increase connection pool size:
+    ```bash
+    SQLALCHEMY_POOL_SIZE=10
+    SQLALCHEMY_MAX_OVERFLOW=20
+    SQLALCHEMY_ENABLE_POOL_PRE_PING=true
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Use Strong Secrets">
+    Generate unique, strong secrets for all cryptographic keys:
+    ```bash
+    openssl rand -base64 32
+    ```
+  </Step>
+  
+  <Step title="Enable HTTPS">
+    Always use HTTPS in production:
+    ```bash
+    REDASH_ENFORCE_HTTPS=true
+    REDASH_COOKIES_SECURE=true
+    ```
+  </Step>
+  
+  <Step title="Enable CSRF Protection">
+    ```bash
+    REDASH_ENFORCE_CSRF=true
+    ```
+  </Step>
+  
+  <Step title="Restrict Network Access">
+    Use firewall rules to limit access:
+    ```bash
+    # Only allow access from specific IPs
+    sudo ufw allow from 192.168.1.0/24 to any port 5000
+    ```
+  </Step>
+  
+  <Step title="Regular Backups">
+    Set up automated backups with cron:
+    ```bash
+    0 2 * * * cd /opt/redash && docker compose exec postgres pg_dump -U postgres postgres > /backups/redash_$(date +\%Y\%m\%d).sql
+    ```
+  </Step>
+  
+  <Step title="Keep Updated">
+    Subscribe to security announcements and update regularly.
+  </Step>
+</Steps>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="Documentation" icon="book" href="https://redash.io/help/">
+    Official Redash documentation
+  </Card>
+  
+  <Card title="Community Forum" icon="comments" href="https://github.com/getredash/redash/discussions">
+    Ask questions and share knowledge
+  </Card>
+  
+  <Card title="GitHub Issues" icon="bug" href="https://github.com/getredash/redash/issues">
+    Report bugs and request features
+  </Card>
+  
+  <Card title="Discord" icon="discord" href="https://discord.gg/tN5MdmfGBp">
+    Join development discussions
+  </Card>
+</CardGroup>

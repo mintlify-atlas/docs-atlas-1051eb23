@@ -1,0 +1,327 @@
+---
+title: Cassandra
+description: Connect to Apache Cassandra and ScyllaDB clusters and execute CQL queries
+---
+
+## Overview
+
+The Cassandra data source enables connections to Apache Cassandra and ScyllaDB clusters, allowing you to execute CQL (Cassandra Query Language) queries. Cassandra is a highly scalable, distributed NoSQL database designed for handling large amounts of data across many commodity servers.
+
+## Connection Setup
+
+To connect to Cassandra, configure the following parameters:
+
+### Required Fields
+
+- **Host**: Cassandra server hostname or IP address
+- **Keyspace**: The keyspace to connect to
+- **Use SSL**: Whether to use SSL/TLS encryption
+
+### Optional Fields
+
+- **Port**: Cassandra native protocol port (default: 9042)
+- **Username**: Authentication username
+- **Password**: Authentication password (stored securely)
+- **Protocol Version**: CQL protocol version (default: 3)
+- **Timeout**: Query timeout in seconds (default: 10)
+- **SSL Protocol**: SSL/TLS protocol version when SSL is enabled
+  - `PROTOCOL_SSLv23`
+  - `PROTOCOL_TLS`
+  - `PROTOCOL_TLS_CLIENT`
+  - `PROTOCOL_TLS_SERVER`
+  - `PROTOCOL_TLSv1`
+  - `PROTOCOL_TLSv1_1`
+  - `PROTOCOL_TLSv1_2`
+- **SSL Certificate File**: Base64-encoded SSL certificate for secure connections
+
+### Configuration Schema
+
+```json
+{
+  "host": "localhost",
+  "port": 9042,
+  "keyspace": "my_keyspace",
+  "username": "cassandra",
+  "password": "cassandra",
+  "protocol": 3,
+  "timeout": 10,
+  "useSsl": false,
+  "sslProtocol": "PROTOCOL_TLSv1_2",
+  "sslCertificateFile": "<base64-encoded-certificate>"
+}
+```
+
+## Query Syntax
+
+Cassandra uses CQL (Cassandra Query Language), which is similar to SQL but optimized for Cassandra's distributed architecture.
+
+### Basic SELECT Query
+
+```sql
+SELECT * FROM users
+WHERE user_id = 12345
+LIMIT 100;
+```
+
+### Filtering with WHERE Clause
+
+```sql
+SELECT user_id, username, email, created_at
+FROM users
+WHERE status = 'active'
+AND created_at >= '2024-01-01'
+ALLOW FILTERING;
+```
+
+**Note**: `ALLOW FILTERING` enables queries on non-indexed columns but may impact performance on large datasets.
+
+### Selecting Specific Columns
+
+```sql
+SELECT user_id, username, email
+FROM users
+WHERE partition_key = 'US'
+LIMIT 50;
+```
+
+### Using Time-Based Queries
+
+```sql
+SELECT sensor_id, timestamp, temperature, humidity
+FROM sensor_data
+WHERE sensor_id = 'sensor_001'
+AND timestamp >= '2024-01-01 00:00:00'
+AND timestamp < '2024-02-01 00:00:00';
+```
+
+### IN Clause
+
+```sql
+SELECT product_id, product_name, price
+FROM products
+WHERE category = 'electronics'
+AND product_id IN (101, 102, 103, 104, 105);
+```
+
+## Aggregations
+
+Cassandra supports basic aggregation functions:
+
+### COUNT
+
+```sql
+SELECT COUNT(*) as total_users
+FROM users
+WHERE status = 'active';
+```
+
+### SUM, AVG, MIN, MAX
+
+```sql
+SELECT 
+  COUNT(*) as order_count,
+  SUM(total_amount) as total_revenue,
+  AVG(total_amount) as avg_order_value,
+  MIN(total_amount) as min_order,
+  MAX(total_amount) as max_order
+FROM orders
+WHERE customer_id = 12345;
+```
+
+### Group By (Limited Support)
+
+```sql
+SELECT 
+  product_category,
+  COUNT(*) as product_count,
+  AVG(price) as avg_price
+FROM products
+GROUP BY product_category;
+```
+
+**Note**: GROUP BY is only supported on partition keys and clustering columns in Cassandra.
+
+## Advanced CQL Features
+
+### Collections (Lists, Sets, Maps)
+
+#### Querying List Columns
+
+```sql
+SELECT user_id, username, favorite_genres
+FROM user_preferences
+WHERE user_id = 12345;
+```
+
+#### Querying Map Columns
+
+```sql
+SELECT product_id, attributes['color'] as color, attributes['size'] as size
+FROM products
+WHERE product_id = 'PROD-001';
+```
+
+#### Querying Set Columns
+
+```sql
+SELECT user_id, tags
+FROM users
+WHERE 'premium' IN tags
+ALLOW FILTERING;
+```
+
+### User-Defined Types (UDTs)
+
+```sql
+SELECT 
+  user_id,
+  username,
+  address.street,
+  address.city,
+  address.postal_code
+FROM users
+WHERE user_id = 12345;
+```
+
+### Counter Columns
+
+```sql
+SELECT page_url, view_count
+FROM page_views
+WHERE page_url = '/home';
+```
+
+### Time-To-Live (TTL) Queries
+
+```sql
+SELECT user_id, session_token, TTL(session_token) as remaining_seconds
+FROM user_sessions
+WHERE user_id = 12345;
+```
+
+### WRITETIME Function
+
+```sql
+SELECT 
+  user_id,
+  email,
+  WRITETIME(email) as email_updated_timestamp
+FROM users
+WHERE user_id = 12345;
+```
+
+## Ordering and Pagination
+
+### ORDER BY (Clustering Columns Only)
+
+```sql
+SELECT event_id, timestamp, event_type, data
+FROM events
+WHERE user_id = 12345
+ORDER BY timestamp DESC
+LIMIT 20;
+```
+
+**Note**: ORDER BY is only supported on clustering columns and must match the clustering order defined in the table schema.
+
+### Pagination with Token
+
+```sql
+SELECT user_id, username, email
+FROM users
+WHERE TOKEN(user_id) > TOKEN(10000)
+LIMIT 100;
+```
+
+## Batch Operations (Read-Only)
+
+While Redash is primarily for querying, you can view batch data:
+
+```sql
+SELECT user_id, order_id, product_id, quantity
+FROM order_items
+WHERE user_id IN (101, 102, 103, 104, 105)
+LIMIT 500;
+```
+
+## Working with JSON
+
+For columns with JSON data (stored as text):
+
+```sql
+SELECT 
+  event_id,
+  event_type,
+  JSON_properties
+FROM events
+WHERE event_type = 'purchase'
+LIMIT 100;
+```
+
+**Note**: JSON parsing must be done in Redash visualizations or post-processing, as CQL doesn't have built-in JSON functions.
+
+## Secondary Indexes
+
+Querying on secondary indexes:
+
+```sql
+SELECT user_id, username, email, status
+FROM users
+WHERE email = 'user@example.com';
+```
+
+**Note**: Ensure secondary indexes exist on columns you're querying to avoid performance issues.
+
+## Materialized Views
+
+Querying materialized views (if they exist):
+
+```sql
+SELECT product_id, category, product_name, price
+FROM products_by_category
+WHERE category = 'electronics'
+LIMIT 50;
+```
+
+## Data Types
+
+Common Cassandra data types:
+
+- **text**, **varchar**: String values
+- **int**, **bigint**, **smallint**, **tinyint**: Integer values
+- **float**, **double**, **decimal**: Floating-point values
+- **boolean**: True/false values
+- **timestamp**: Date and time
+- **uuid**, **timeuuid**: Unique identifiers
+- **list**, **set**, **map**: Collection types
+- **counter**: Counter columns
+- **blob**: Binary data
+
+All types are mapped to appropriate Redash column types (String by default).
+
+## Best Practices
+
+1. **Design for partition keys**: Always query with partition keys when possible for optimal performance
+2. **Avoid ALLOW FILTERING**: While convenient, it can cause performance issues on large datasets
+3. **Use LIMIT**: Always limit result sets to prevent overwhelming the client and server
+4. **Leverage clustering columns**: Use clustering columns for efficient sorting and range queries
+5. **Understand data model**: Cassandra requires denormalized data models optimized for specific queries
+6. **Monitor query performance**: Be aware of query timeouts and adjust the timeout setting as needed
+7. **Use token ranges carefully**: Token-based pagination is useful but requires understanding of partitioning
+8. **Secondary indexes**: Use sparingly and only on low-cardinality columns
+9. **Materialized views**: Query materialized views for pre-aggregated or re-organized data
+10. **Connection pooling**: Redash handles connection management, but be aware of cluster load
+
+## ScyllaDB
+
+The same Cassandra query runner works for ScyllaDB clusters. ScyllaDB is a Cassandra-compatible database with enhanced performance. Simply configure the connection with your ScyllaDB cluster details using the same parameters.
+
+## Testing Connection
+
+Redash executes a test query when setting up the connection:
+
+```sql
+SELECT dateof(now()) FROM system.local
+```
+
+If this query succeeds, your connection is properly configured.

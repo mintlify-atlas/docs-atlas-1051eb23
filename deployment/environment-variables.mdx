@@ -1,0 +1,1037 @@
+---
+title: Environment Variables
+description: Complete reference for all Redash environment variables
+---
+
+Redash is configured through environment variables. This reference lists all available configuration options extracted from the source code.
+
+## Required Variables
+
+These variables **must** be set for Redash to run:
+
+### REDASH_COOKIE_SECRET
+
+**Required**: Yes  
+**Type**: String  
+**Description**: Secret key for Flask session cookies and CSRF protection.
+
+```bash
+# Generate with:
+openssl rand -base64 32
+```
+
+Without this variable, Redash will fail to start with an error.
+
+### REDASH_SECRET_KEY
+
+**Default**: Same as `REDASH_COOKIE_SECRET`  
+**Type**: String  
+**Description**: Secret key for encrypting data source options and sensitive configuration.
+
+```bash
+# Generate separately from cookie secret:
+openssl rand -base64 32
+```
+
+## Database Configuration
+
+### REDASH_DATABASE_URL
+
+**Default**: `postgresql:///postgres`  
+**Fallback**: `DATABASE_URL`  
+**Type**: Database URL  
+**Description**: PostgreSQL connection string for Redash's metadata database.
+
+**Format**:
+```
+postgresql://[user[:password]@][host][:port][/dbname][?param=value]
+```
+
+**Examples**:
+```bash
+REDASH_DATABASE_URL="postgresql://redash:password@localhost/redash"
+REDASH_DATABASE_URL="postgresql://user@postgres:5432/redash?sslmode=require"
+```
+
+### SQLALCHEMY_MAX_OVERFLOW
+
+**Default**: `None`  
+**Type**: Integer  
+**Description**: Maximum number of connections to create beyond pool size.
+
+### SQLALCHEMY_POOL_SIZE
+
+**Default**: `None`  
+**Type**: Integer  
+**Description**: Number of connections to maintain in the pool.
+
+### SQLALCHEMY_DISABLE_POOL
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Disable connection pooling entirely.
+
+### SQLALCHEMY_ENABLE_POOL_PRE_PING
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Enable connection health checks before using from pool.
+
+## Redis Configuration
+
+### REDASH_REDIS_URL
+
+**Default**: `redis://localhost:6379/0`  
+**Fallback**: `REDIS_URL`  
+**Type**: Redis URL  
+**Description**: Redis connection string for caching and sessions.
+
+**Examples**:
+```bash
+REDASH_REDIS_URL="redis://localhost:6379/0"
+REDASH_REDIS_URL="redis://:password@redis:6379/0"
+REDASH_REDIS_URL="rediss://redis:6380/0"  # SSL
+```
+
+### RQ_REDIS_URL
+
+**Default**: Same as `REDASH_REDIS_URL`  
+**Type**: Redis URL  
+**Description**: Redis URL for RQ (job queue). Can be separate from main Redis.
+
+## Web Server Configuration
+
+### REDASH_HOST
+
+**Default**: `""`  
+**Type**: URL  
+**Description**: Full URL where Redash is accessible (e.g., `https://redash.example.com`).
+
+Used for generating absolute URLs in emails and external links.
+
+### REDASH_WEB_WORKERS
+
+**Default**: `4`  
+**Type**: Integer  
+**Description**: Number of Gunicorn worker processes for the web server.
+
+**Recommended**: `(2 * CPU_CORES) + 1`
+
+### REDASH_GUNICORN_TIMEOUT
+
+**Default**: `60`  
+**Type**: Integer (seconds)  
+**Description**: Request timeout for Gunicorn workers.
+
+### REDASH_GUNICORN_LIMIT_REQUEST_LINE
+
+**Default**: `0` (unlimited)  
+**Type**: Integer  
+**Description**: Maximum size of HTTP request line in bytes.
+
+### MAX_REQUESTS
+
+**Default**: `1000`  
+**Type**: Integer  
+**Description**: Recycle workers after this many requests (prevents memory leaks).
+
+### MAX_REQUESTS_JITTER
+
+**Default**: `100`  
+**Type**: Integer  
+**Description**: Randomize worker recycling by ± this value.
+
+## Worker Configuration
+
+### WORKERS_COUNT
+
+**Default**: `2`  
+**Type**: Integer  
+**Description**: Number of RQ worker processes to run.
+
+### QUEUES
+
+**Default**: All queues  
+**Type**: String (comma-separated)  
+**Description**: Specific RQ queues for workers to process.
+
+**Available queues**:
+- `queries` - Query execution
+- `scheduled_queries` - Scheduled query execution
+- `schemas` - Schema refresh
+- `default` - Miscellaneous tasks
+
+**Example**:
+```bash
+QUEUES="queries,scheduled_queries"
+```
+
+## Query Execution
+
+### REDASH_ADHOC_QUERY_TIME_LIMIT
+
+**Default**: `-1` (unlimited)  
+**Type**: Integer (seconds)  
+**Description**: Time limit for manually executed queries.
+
+### REDASH_SCHEDULED_QUERY_TIME_LIMIT
+
+**Default**: `-1` (unlimited)  
+**Type**: Integer (seconds)  
+**Description**: Time limit for scheduled queries.
+
+### REDASH_SCHEMAS_REFRESH_SCHEDULE
+
+**Default**: `30`  
+**Type**: Integer (minutes)  
+**Description**: Interval for refreshing data source schemas.
+
+### REDASH_SCHEMAS_REFRESH_TIMEOUT
+
+**Default**: `300`  
+**Type**: Integer (seconds)  
+**Description**: Timeout for schema refresh operations.
+
+### REDASH_SCHEMA_RUN_TABLE_SIZE_CALCULATIONS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Calculate table sizes during schema refresh (slower).
+
+## Query Results Management
+
+### REDASH_QUERY_RESULTS_CLEANUP_ENABLED
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Enable periodic cleanup of old query results.
+
+### REDASH_QUERY_RESULTS_CLEANUP_COUNT
+
+**Default**: `100`  
+**Type**: Integer  
+**Description**: Number of results to clean up per run.
+
+### REDASH_QUERY_RESULTS_CLEANUP_MAX_AGE
+
+**Default**: `7`  
+**Type**: Integer (days)  
+**Description**: Age after which unused results are deleted.
+
+### REDASH_QUERY_RESULTS_EXPIRED_TTL_ENABLED
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Enable expiration TTL for query results.
+
+### REDASH_QUERY_RESULTS_EXPIRED_TTL
+
+**Default**: `86400` (1 day)  
+**Type**: Integer (seconds)  
+**Description**: TTL for expired query results.
+
+## Job Configuration
+
+### REDASH_JOB_EXPIRY_TIME
+
+**Default**: `43200` (12 hours)  
+**Type**: Integer (seconds)  
+**Description**: How long to keep job data in Redis.
+
+### REDASH_JOB_DEFAULT_FAILURE_TTL
+
+**Default**: `604800` (7 days)  
+**Type**: Integer (seconds)  
+**Description**: How long to keep failed job data.
+
+## Authentication
+
+### REDASH_AUTH_TYPE
+
+**Default**: `api_key`  
+**Type**: String  
+**Description**: Authentication method.
+
+**Options**: `api_key`, `hmac`, `ldap`, `saml`, `remote_user`, `google`
+
+### REDASH_INVITATION_TOKEN_MAX_AGE
+
+**Default**: `604800` (7 days)  
+**Type**: Integer (seconds)  
+**Description**: How long invitation tokens remain valid.
+
+### REDASH_MULTI_ORG
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Enable multi-organization support.
+
+## Google OAuth
+
+### REDASH_GOOGLE_CLIENT_ID
+
+**Default**: `""`  
+**Type**: String  
+**Description**: Google OAuth client ID.
+
+### REDASH_GOOGLE_CLIENT_SECRET
+
+**Default**: `""`  
+**Type**: String  
+**Description**: Google OAuth client secret.
+
+### REDASH_GOOGLE_OAUTH_SCHEME_OVERRIDE
+
+**Default**: `""`  
+**Type**: String (`http` or `https`)  
+**Description**: Force URL scheme for OAuth redirects behind proxies.
+
+## SAML Authentication
+
+### REDASH_SAML_SCHEME_OVERRIDE
+
+**Default**: `""`  
+**Type**: String  
+**Description**: Force URL scheme for SAML behind proxies.
+
+### REDASH_SAML_ENCRYPTION_PEM_PATH
+
+**Default**: `""`  
+**Type**: File path  
+**Description**: Path to SAML encryption private key.
+
+### REDASH_SAML_ENCRYPTION_CERT_PATH
+
+**Default**: `""`  
+**Type**: File path  
+**Description**: Path to SAML encryption certificate.
+
+## LDAP Authentication
+
+### REDASH_LDAP_LOGIN_ENABLED
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Enable LDAP authentication.
+
+### REDASH_LDAP_URL
+
+**Default**: `None`  
+**Type**: URL  
+**Description**: LDAP server URL (e.g., `ldap://ldap.example.com:389`).
+
+### REDASH_LDAP_USE_SSL
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Use SSL for LDAP connection.
+
+### REDASH_LDAP_AUTH_METHOD
+
+**Default**: `SIMPLE`  
+**Type**: String  
+**Description**: LDAP authentication method.
+
+**Options**: `SIMPLE`, `ANONYMOUS`, `NTLM`
+
+### REDASH_LDAP_BIND_DN
+
+**Default**: `None`  
+**Type**: String  
+**Description**: DN for LDAP bind (e.g., `cn=admin,dc=example,dc=com`).
+
+### REDASH_LDAP_BIND_DN_PASSWORD
+
+**Default**: `""`  
+**Type**: String  
+**Description**: Password for LDAP bind DN.
+
+### REDASH_LDAP_SEARCH_DN
+
+**Default**: Fallback to `REDASH_SEARCH_DN`  
+**Type**: String  
+**Description**: Base DN for user searches (e.g., `ou=users,dc=example,dc=com`).
+
+### REDASH_LDAP_SEARCH_TEMPLATE
+
+**Default**: `(cn=%(username)s)`  
+**Type**: String  
+**Description**: LDAP search filter template.
+
+**Example for Active Directory**: `(sAMAccountName=%(username)s)`
+
+### REDASH_LDAP_DISPLAY_NAME_KEY
+
+**Default**: `displayName`  
+**Type**: String  
+**Description**: LDAP attribute for user's display name.
+
+### REDASH_LDAP_EMAIL_KEY
+
+**Default**: `mail`  
+**Type**: String  
+**Description**: LDAP attribute for user's email.
+
+### REDASH_LDAP_CUSTOM_USERNAME_PROMPT
+
+**Default**: `LDAP/AD/SSO username:`  
+**Type**: String  
+**Description**: Login form username prompt for LDAP.
+
+## Remote User Authentication
+
+### REDASH_REMOTE_USER_LOGIN_ENABLED
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Enable trusted header authentication.
+
+**Warning**: Only enable if you have a trusted frontend proxy that validates users.
+
+### REDASH_REMOTE_USER_HEADER
+
+**Default**: `X-Forwarded-Remote-User`  
+**Type**: String  
+**Description**: HTTP header containing authenticated user email.
+
+## Security
+
+### REDASH_ENFORCE_HTTPS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Redirect HTTP requests to HTTPS.
+
+### REDASH_ENFORCE_HTTPS_PERMANENT
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Use permanent (301) instead of temporary (302) redirects.
+
+### REDASH_ENFORCE_CSRF
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Enforce CSRF token validation on API requests.
+
+**Recommended**: `true` for production.
+
+### REDASH_CSRF_TIME_LIMIT
+
+**Default**: `21600` (6 hours)  
+**Type**: Integer (seconds)  
+**Description**: CSRF token validity duration.
+
+### REDASH_ENFORCE_FILE_SAVE
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Force file downloads instead of inline display.
+
+### REDASH_ENFORCE_PRIVATE_IP_BLOCK
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Block JSON query runner from accessing private IPs.
+
+### REDASH_BLOCKED_DOMAINS
+
+**Default**: `qq.com`  
+**Type**: String (comma-separated)  
+**Description**: Email domains blocked from registration.
+
+## Cookie Configuration
+
+### REDASH_COOKIES_SECURE
+
+**Default**: Same as `REDASH_ENFORCE_HTTPS`  
+**Type**: Boolean  
+**Description**: Set secure flag on all cookies.
+
+### REDASH_SESSION_COOKIE_SECURE
+
+**Default**: Same as `REDASH_COOKIES_SECURE`  
+**Type**: Boolean  
+**Description**: Set secure flag on session cookie.
+
+### REDASH_SESSION_COOKIE_HTTPONLY
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Set HttpOnly flag on session cookie.
+
+### REDASH_SESSION_COOKIE_NAME
+
+**Default**: `session`  
+**Type**: String  
+**Description**: Session cookie name.
+
+### REDASH_SESSION_EXPIRY_TIME
+
+**Default**: `21600` (6 hours)  
+**Type**: Integer (seconds)  
+**Description**: Session timeout duration.
+
+### REDASH_REMEMBER_COOKIE_SECURE
+
+**Default**: Same as `REDASH_COOKIES_SECURE`  
+**Type**: Boolean  
+**Description**: Set secure flag on remember-me cookie.
+
+### REDASH_REMEMBER_COOKIE_HTTPONLY
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Set HttpOnly flag on remember-me cookie.
+
+### REDASH_REMEMBER_COOKIE_DURATION
+
+**Default**: `2678400` (31 days)  
+**Type**: Integer (seconds)  
+**Description**: Remember-me cookie duration.
+
+## Security Headers
+
+### REDASH_FRAME_OPTIONS
+
+**Default**: `deny`  
+**Type**: String  
+**Description**: X-Frame-Options header value.
+
+**Options**: `deny`, `sameorigin`, `allow-from`
+
+### REDASH_FRAME_OPTIONS_ALLOW_FROM
+
+**Default**: `""`  
+**Type**: String  
+**Description**: URL for allow-from frame option.
+
+### REDASH_HSTS_ENABLED
+
+**Default**: Same as `REDASH_ENFORCE_HTTPS`  
+**Type**: Boolean  
+**Description**: Send Strict-Transport-Security header.
+
+### REDASH_HSTS_MAX_AGE
+
+**Default**: `31536000` (1 year)  
+**Type**: Integer (seconds)  
+**Description**: HSTS max-age value.
+
+### REDASH_HSTS_PRELOAD
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Include preload directive in HSTS.
+
+### REDASH_HSTS_INCLUDE_SUBDOMAINS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Include subdomains in HSTS.
+
+### REDASH_CONTENT_SECURITY_POLICY
+
+**Default**: See below  
+**Type**: String  
+**Description**: Content Security Policy directives.
+
+**Default value**:
+```
+default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; font-src 'self' data:; img-src 'self' http: https: data: blob:; object-src 'none'; frame-ancestors 'none'; frame-src redash.io;
+```
+
+### REDASH_CONTENT_SECURITY_POLICY_REPORT_URI
+
+**Default**: `""`  
+**Type**: URL  
+**Description**: CSP violation report endpoint.
+
+### REDASH_CONTENT_SECURITY_POLICY_REPORT_ONLY
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Use report-only mode for CSP.
+
+### REDASH_CONTENT_SECURITY_POLICY_NONCE_IN
+
+**Default**: `[]`  
+**Type**: Array  
+**Description**: CSP directives to use nonces in.
+
+### REDASH_REFERRER_POLICY
+
+**Default**: `strict-origin-when-cross-origin`  
+**Type**: String  
+**Description**: Referrer-Policy header value.
+
+### REDASH_FEATURE_POLICY
+
+**Default**: `""`  
+**Type**: String  
+**Description**: Feature-Policy header value.
+
+## Email Configuration
+
+### REDASH_MAIL_SERVER
+
+**Default**: `localhost`  
+**Type**: String  
+**Description**: SMTP server hostname.
+
+### REDASH_MAIL_PORT
+
+**Default**: `25`  
+**Type**: Integer  
+**Description**: SMTP server port.
+
+### REDASH_MAIL_USE_TLS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Use TLS for SMTP.
+
+### REDASH_MAIL_USE_SSL
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Use SSL for SMTP.
+
+### REDASH_MAIL_USERNAME
+
+**Default**: `None`  
+**Type**: String  
+**Description**: SMTP authentication username.
+
+### REDASH_MAIL_PASSWORD
+
+**Default**: `None`  
+**Type**: String  
+**Description**: SMTP authentication password.
+
+### REDASH_MAIL_DEFAULT_SENDER
+
+**Default**: `None`  
+**Type**: Email  
+**Description**: From address for outgoing emails.
+
+**Required** for email functionality.
+
+### REDASH_MAIL_MAX_EMAILS
+
+**Default**: `None`  
+**Type**: Integer  
+**Description**: Maximum emails per connection.
+
+### REDASH_MAIL_ASCII_ATTACHMENTS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Convert attachments to ASCII.
+
+### REDASH_SEND_FAILURE_EMAIL_INTERVAL
+
+**Default**: `60`  
+**Type**: Integer (minutes)  
+**Description**: Minimum interval between failure emails.
+
+### REDASH_MAX_FAILURE_REPORTS_PER_QUERY
+
+**Default**: `100`  
+**Type**: Integer  
+**Description**: Maximum failure reports per query.
+
+### REDASH_ALERTS_DEFAULT_MAIL_SUBJECT_TEMPLATE
+
+**Default**: `Alert: {alert_name} changed status to {state}`  
+**Type**: String  
+**Description**: Email subject template for alerts.
+
+### REDASH_ALERTS_DEFAULT_MAIL_BODY_TEMPLATE_FILE
+
+**Default**: `templates/emails/alert.html`  
+**Type**: File path  
+**Description**: Email body template file for alerts.
+
+## Logging
+
+### REDASH_LOG_LEVEL
+
+**Default**: `INFO`  
+**Type**: String  
+**Description**: Logging level.
+
+**Options**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+
+### REDASH_LOG_STDOUT
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Log to stdout instead of file.
+
+**Recommended**: `true` for Docker/Kubernetes.
+
+### REDASH_LOG_PREFIX
+
+**Default**: `""`  
+**Type**: String  
+**Description**: Prefix for all log messages.
+
+### REDASH_LOG_FORMAT
+
+**Default**: `[%(asctime)s][PID:%(process)d][%(levelname)s][%(name)s] %(message)s`  
+**Type**: String  
+**Description**: Python logging format string.
+
+### REDASH_RQ_WORKER_JOB_LOG_FORMAT
+
+**Default**: Extended format with job info  
+**Type**: String  
+**Description**: Log format for RQ worker jobs.
+
+## Rate Limiting
+
+### REDASH_RATELIMIT_ENABLED
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Enable rate limiting.
+
+### REDASH_THROTTLE_LOGIN_PATTERN
+
+**Default**: `50/hour`  
+**Type**: String  
+**Description**: Rate limit for login attempts.
+
+**Format**: `<count>/<period>` where period is `second`, `minute`, `hour`, `day`
+
+### REDASH_THROTTLE_PASS_RESET_PATTERN
+
+**Default**: `10/hour`  
+**Type**: String  
+**Description**: Rate limit for password reset requests.
+
+### REDASH_LIMITER_STORAGE
+
+**Default**: Same as `REDASH_REDIS_URL`  
+**Type**: Redis URL  
+**Description**: Redis URL for rate limit storage.
+
+## CORS
+
+### REDASH_CORS_ACCESS_CONTROL_ALLOW_ORIGIN
+
+**Default**: `""`  
+**Type**: String (comma-separated)  
+**Description**: Allowed origins for CORS.
+
+**Example**: `https://app.example.com,https://dashboard.example.com`
+
+### REDASH_CORS_ACCESS_CONTROL_ALLOW_CREDENTIALS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Allow credentials in CORS requests.
+
+### REDASH_CORS_ACCESS_CONTROL_REQUEST_METHOD
+
+**Default**: `GET, POST, PUT`  
+**Type**: String  
+**Description**: Allowed HTTP methods for CORS.
+
+### REDASH_CORS_ACCESS_CONTROL_ALLOW_HEADERS
+
+**Default**: `Content-Type`  
+**Type**: String  
+**Description**: Allowed headers for CORS.
+
+## Monitoring
+
+### REDASH_STATSD_HOST
+
+**Default**: `127.0.0.1`  
+**Type**: String  
+**Description**: StatsD server hostname.
+
+### REDASH_STATSD_PORT
+
+**Default**: `8125`  
+**Type**: Integer  
+**Description**: StatsD server port.
+
+### REDASH_STATSD_PREFIX
+
+**Default**: `redash`  
+**Type**: String  
+**Description**: Prefix for StatsD metrics.
+
+### REDASH_STATSD_USE_TAGS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Use DogStatsD-style tags.
+
+### REDASH_SENTRY_DSN
+
+**Default**: `""`  
+**Type**: String  
+**Description**: Sentry DSN for error tracking.
+
+### REDASH_SENTRY_ENVIRONMENT
+
+**Default**: `None`  
+**Type**: String  
+**Description**: Environment tag for Sentry.
+
+## Proxy Configuration
+
+### REDASH_PROXIES_COUNT
+
+**Default**: `1`  
+**Type**: Integer  
+**Description**: Number of proxy servers in front of Redash.
+
+Used for proper IP address extraction from `X-Forwarded-For`.
+
+## Query Runners
+
+### REDASH_ENABLED_QUERY_RUNNERS
+
+**Default**: All built-in runners  
+**Type**: String (comma-separated)  
+**Description**: Query runners to enable.
+
+**Built-in runners**: `athena`, `big_query`, `postgres`, `mysql`, `mongodb`, `elasticsearch`, `clickhouse`, `snowflake`, etc. (35+ total)
+
+### REDASH_ADDITIONAL_QUERY_RUNNERS
+
+**Default**: `""`  
+**Type**: String (comma-separated)  
+**Description**: Additional query runner modules to load.
+
+### REDASH_DISABLED_QUERY_RUNNERS
+
+**Default**: `""`  
+**Type**: String (comma-separated)  
+**Description**: Query runners to disable.
+
+### REDASH_BIGQUERY_HTTP_TIMEOUT
+
+**Default**: `600`  
+**Type**: Integer (seconds)  
+**Description**: HTTP timeout for BigQuery requests.
+
+### REDASH_KYLIN_OFFSET
+
+**Default**: `0`  
+**Type**: Integer  
+**Description**: Kylin query result offset.
+
+### REDASH_KYLIN_LIMIT
+
+**Default**: `50000`  
+**Type**: Integer  
+**Description**: Kylin query result limit.
+
+### REDASH_KYLIN_ACCEPT_PARTIAL
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Accept partial results from Kylin.
+
+## Destinations
+
+### REDASH_ENABLED_DESTINATIONS
+
+**Default**: All built-in destinations  
+**Type**: String (comma-separated)  
+**Description**: Alert destinations to enable.
+
+**Built-in**: `email`, `slack`, `webhook`, `discord`, `mattermost`, `chatwork`, `pagerduty`, `hangoutschat`, `microsoft_teams_webhook`, `asana`, `webex`, `datadog`
+
+### REDASH_ADDITIONAL_DESTINATIONS
+
+**Default**: `""`  
+**Type**: String (comma-separated)  
+**Description**: Additional destination modules.
+
+### REDASH_EVENT_REPORTING_WEBHOOKS
+
+**Default**: `""`  
+**Type**: String (comma-separated)  
+**Description**: Webhooks for event reporting.
+
+## Client Features
+
+### REDASH_ALLOW_SCRIPTS_IN_USER_INPUT
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Allow JavaScript in user input (security risk).
+
+### REDASH_DASHBOARD_REFRESH_INTERVALS
+
+**Default**: `60,300,600,1800,3600,43200,86400`  
+**Type**: String (comma-separated seconds)  
+**Description**: Available dashboard refresh intervals.
+
+### REDASH_QUERY_REFRESH_INTERVALS
+
+**Default**: `60, 300, 600, ...` (many values)  
+**Type**: String (comma-separated seconds)  
+**Description**: Available query refresh intervals.
+
+### REDASH_PAGE_SIZE
+
+**Default**: `20`  
+**Type**: Integer  
+**Description**: Default pagination size.
+
+### REDASH_PAGE_SIZE_OPTIONS
+
+**Default**: `5,10,20,50,100`  
+**Type**: String (comma-separated)  
+**Description**: Available page size options.
+
+### REDASH_TABLE_CELL_MAX_JSON_SIZE
+
+**Default**: `50000`  
+**Type**: Integer (bytes)  
+**Description**: Maximum JSON size displayed in table cells.
+
+### REDASH_VERSION_CHECK
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Check for new Redash versions.
+
+### REDASH_FEATURE_DISABLE_REFRESH_QUERIES
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Disable query refresh button.
+
+### REDASH_FEATURE_SHOW_QUERY_RESULTS_COUNT
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Show row count in query results.
+
+### REDASH_FEATURE_ALLOW_CUSTOM_JS_VISUALIZATIONS
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Allow custom JavaScript visualizations.
+
+### REDASH_FEATURE_AUTO_PUBLISH_NAMED_QUERIES
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Auto-publish queries when named.
+
+### REDASH_FEATURE_EXTENDED_ALERT_OPTIONS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Enable extended alert options.
+
+### REDASH_ALLOW_PARAMETERS_IN_EMBEDS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Allow parameters in embedded visualizations (deprecated).
+
+## Advanced
+
+### REDASH_STATIC_ASSETS_PATH
+
+**Default**: `../client/dist/`  
+**Type**: Path  
+**Description**: Path to static frontend assets.
+
+### REDASH_FLASK_TEMPLATE_PATH
+
+**Default**: Same as `REDASH_STATIC_ASSETS_PATH`  
+**Type**: Path  
+**Description**: Path to Flask templates.
+
+### REDASH_DYNAMIC_SETTINGS_MODULE
+
+**Default**: `redash.settings.dynamic_settings`  
+**Type**: Python module path  
+**Description**: Module for dynamic settings.
+
+### REDASH_REQUESTS_ALLOW_REDIRECTS
+
+**Default**: `false`  
+**Type**: Boolean  
+**Description**: Allow HTTP redirects in query runners.
+
+### SQLPARSE_FORMAT_REINDENT
+
+**Default**: `true`  
+**Type**: Boolean  
+**Description**: Reindent SQL when formatting.
+
+### SQLPARSE_FORMAT_KEYWORD_CASE
+
+**Default**: `upper`  
+**Type**: String  
+**Description**: Keyword case for SQL formatting.
+
+**Options**: `upper`, `lower`, `capitalize`
+
+## Example Configuration
+
+### Minimal Production Setup
+
+```bash
+# Required
+REDASH_COOKIE_SECRET="<generate-32-char-secret>"
+REDASH_SECRET_KEY="<generate-32-char-secret>"
+REDASH_DATABASE_URL="postgresql://redash:password@postgres:5432/redash"
+REDASH_REDIS_URL="redis://redis:6379/0"
+
+# Application
+REDASH_HOST="https://redash.example.com"
+
+# Email
+REDASH_MAIL_SERVER="smtp.example.com"
+REDASH_MAIL_PORT="587"
+REDASH_MAIL_USE_TLS="true"
+REDASH_MAIL_USERNAME="redash@example.com"
+REDASH_MAIL_PASSWORD="<smtp-password>"
+REDASH_MAIL_DEFAULT_SENDER="redash@example.com"
+
+# Security
+REDASH_ENFORCE_HTTPS="true"
+REDASH_ENFORCE_CSRF="true"
+REDASH_COOKIES_SECURE="true"
+```
+
+### High-Performance Setup
+
+```bash
+# Web server
+REDASH_WEB_WORKERS="8"
+REDASH_GUNICORN_TIMEOUT="120"
+
+# Workers
+WORKERS_COUNT="8"
+QUEUES="queries,scheduled_queries,schemas"
+
+# Database pooling
+SQLALCHEMY_POOL_SIZE="20"
+SQLALCHEMY_MAX_OVERFLOW="10"
+SQLALCHEMY_ENABLE_POOL_PRE_PING="true"
+
+# Query execution
+REDASH_ADHOC_QUERY_TIME_LIMIT="300"
+REDASH_SCHEDULED_QUERY_TIME_LIMIT="600"
+```
+
+## Next Steps
+
+- [Docker Deployment](/deployment/docker)
+- [Kubernetes Deployment](/deployment/kubernetes)
+- [Upgrading Redash](/deployment/upgrading)

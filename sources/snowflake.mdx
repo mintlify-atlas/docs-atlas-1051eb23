@@ -1,0 +1,509 @@
+---
+title: Snowflake
+description: Connect Redash to Snowflake to query and visualize your cloud data platform
+---
+
+Snowflake is a cloud-based data platform that provides data warehousing, data lakes, data engineering, and data sharing capabilities.
+
+## Prerequisites
+
+- A Snowflake account
+- Account credentials (username/password or key-pair authentication)
+- At least one warehouse, database, and schema created
+- Appropriate role with access to required objects
+
+## Authentication Methods
+
+Snowflake supports two authentication methods in Redash:
+
+### 1. Username and Password
+
+Standard authentication using your Snowflake credentials.
+
+### 2. Key-Pair Authentication (Recommended)
+
+Use RSA key pairs for enhanced security. This method is recommended for production deployments and automated access.
+
+## Configuration
+
+### Required Settings
+
+<ParamField path="account" type="string" required>
+  Your Snowflake account identifier.
+  
+  Examples:
+  - `xy12345` (AWS US West)
+  - `xy12345.us-east-1` (AWS US East with region)
+  - `xy12345.eu-central-1.aws` (Full format)
+  
+  Find this in your Snowflake URL: `https://<account>.snowflakecomputing.com`
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Snowflake username.
+</ParamField>
+
+<ParamField path="warehouse" type="string" required>
+  Name of the warehouse to use for query execution.
+  
+  Example: `COMPUTE_WH`
+</ParamField>
+
+<ParamField path="database" type="string" required>
+  Database name to connect to. Can include schema in format `database.schema`.
+  
+  Examples:
+  - `ANALYTICS_DB`
+  - `ANALYTICS_DB.PUBLIC`
+</ParamField>
+
+### Authentication
+
+Choose **one** of the following authentication methods:
+
+#### Option 1: Password Authentication
+
+<ParamField path="password" type="string">
+  Snowflake account password.
+</ParamField>
+
+#### Option 2: Key-Pair Authentication
+
+<ParamField path="private_key_File" type="string">
+  Base64-encoded RSA private key file (PKCS#8 format).
+  
+  To generate and encode a private key:
+  ```bash
+  # Generate private key
+  openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+  
+  # Encode for Redash
+  base64 -i rsa_key.p8 | pbcopy
+  ```
+</ParamField>
+
+<ParamField path="private_key_pwd" type="string">
+  Password for encrypted private key (if your private key is password-protected).
+</ParamField>
+
+### Optional Settings
+
+<ParamField path="region" type="string" default="us-west">
+  Snowflake region. Set this if not using the default `us-west` region.
+  
+  Examples: `us-east-1`, `eu-central-1`, `ap-southeast-1`
+  
+  <Note>
+    For `us-west`, you can omit this parameter or set it explicitly.
+  </Note>
+</ParamField>
+
+<ParamField path="host" type="string">
+  Full Snowflake host URL. Only needed if you want to override the auto-generated host.
+  
+  Example: `myaccount.us-east-1.snowflakecomputing.com`
+  
+  If omitted, Redash constructs the host from `account` and `region`.
+</ParamField>
+
+<ParamField path="lower_case_columns" type="boolean" default="false">
+  Convert column names to lowercase in query results.
+  
+  Snowflake preserves case for quoted identifiers. Enable this for consistency if you use lowercase column names in your application.
+</ParamField>
+
+## Setting Up Key-Pair Authentication
+
+Key-pair authentication is more secure than passwords and recommended for production use.
+
+### Step 1: Generate RSA Key Pair
+
+```bash
+# Generate encrypted private key (recommended)
+openssl genrsa 2048 | openssl pkcs8 -topk8 -v2 des3 -inform PEM -out rsa_key.p8
+
+# OR generate unencrypted private key
+openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+
+# Extract public key
+openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
+```
+
+### Step 2: Assign Public Key to Snowflake User
+
+```sql
+-- Get public key content (remove header/footer and newlines)
+ALTER USER your_username SET RSA_PUBLIC_KEY='MIIBIjANBgkqh...';
+
+-- Verify the key is set
+DESC USER your_username;
+```
+
+### Step 3: Configure Redash
+
+1. Base64-encode your private key:
+   ```bash
+   base64 -i rsa_key.p8 | pbcopy
+   ```
+
+2. In Redash data source configuration:
+   - Paste the base64-encoded key into `private_key_File`
+   - If your key is encrypted, enter the password in `private_key_pwd`
+   - Leave `password` field empty
+
+<Warning>
+  Store your private key securely. Never commit it to version control or share it.
+</Warning>
+
+## Role and Warehouse Management
+
+### Granting Permissions
+
+Your Snowflake user needs appropriate permissions:
+
+```sql
+-- Create a role for Redash
+CREATE ROLE redash_role;
+
+-- Grant warehouse usage
+GRANT USAGE ON WAREHOUSE compute_wh TO ROLE redash_role;
+
+-- Grant database and schema access
+GRANT USAGE ON DATABASE analytics_db TO ROLE redash_role;
+GRANT USAGE ON SCHEMA analytics_db.public TO ROLE redash_role;
+
+-- Grant table access
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics_db.public TO ROLE redash_role;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA analytics_db.public TO ROLE redash_role;
+
+-- Assign role to user
+GRANT ROLE redash_role TO USER your_username;
+
+-- Set as default role (optional)
+ALTER USER your_username SET DEFAULT_ROLE = redash_role;
+```
+
+### Warehouse Auto-Suspend
+
+Configure your warehouse to auto-suspend when idle to save costs:
+
+```sql
+ALTER WAREHOUSE compute_wh SET AUTO_SUSPEND = 60; -- seconds
+ALTER WAREHOUSE compute_wh SET AUTO_RESUME = TRUE;
+```
+
+## Schema Browser
+
+Redash loads schema information using Snowflake's `SHOW COLUMNS` command:
+
+- Displays all tables and views in the configured database
+- Shows column names for each table
+- If database includes schema (e.g., `database.schema`), only shows that schema
+- Respects user's access permissions (only shows accessible objects)
+
+<Note>
+  Schema loading doesn't query `INFORMATION_SCHEMA`, making it fast and cost-effective.
+</Note>
+
+## Query Features
+
+### Supported Data Types
+
+Snowflake data types are mapped to Redash types:
+
+- **Numeric**: `NUMBER`, `DECIMAL`, `NUMERIC`, `INT`, `INTEGER`, `BIGINT`, `SMALLINT`, `FLOAT`, `DOUBLE`
+- **String**: `VARCHAR`, `CHAR`, `CHARACTER`, `STRING`, `TEXT`
+- **Binary**: `BINARY`, `VARBINARY`
+- **Boolean**: `BOOLEAN`
+- **Date/Time**: `DATE`, `DATETIME`, `TIME`, `TIMESTAMP`, `TIMESTAMP_LTZ`, `TIMESTAMP_NTZ`, `TIMESTAMP_TZ`
+- **Semi-structured**: `VARIANT`, `OBJECT`, `ARRAY`
+
+### Semi-Structured Data
+
+Query JSON, Avro, Parquet, and other semi-structured data:
+
+```sql
+SELECT 
+  raw_data:customer.name::STRING as customer_name,
+  raw_data:customer.email::STRING as customer_email,
+  raw_data:order.total::NUMBER as order_total
+FROM 
+  json_events
+WHERE 
+  raw_data:event_type::STRING = 'purchase';
+```
+
+### Time Travel
+
+Query historical data:
+
+```sql
+-- Query table as it was 1 hour ago
+SELECT * 
+FROM users 
+AT(OFFSET => -3600);
+
+-- Query table at specific timestamp
+SELECT * 
+FROM users 
+AT(TIMESTAMP => '2024-01-15 10:00:00'::TIMESTAMP);
+
+-- Query before a specific statement
+SELECT * 
+FROM users 
+BEFORE(STATEMENT => '8e5d0ca9-005e-44e6-b858-a8f5b37c5726');
+```
+
+### Context Management
+
+Redash automatically executes context-setting commands before your query:
+
+```sql
+USE WAREHOUSE compute_wh;
+USE analytics_db;
+-- Your query here
+```
+
+You can override the warehouse or database in individual queries:
+
+```sql
+USE WAREHOUSE large_wh;
+SELECT * FROM heavy_table;
+```
+
+## Cost Management
+
+### Warehouse Sizing
+
+Choose appropriate warehouse sizes:
+
+- **X-Small**: Simple queries, development
+- **Small**: Standard dashboards and reports
+- **Medium/Large**: Complex analytics, large data volumes
+- **X-Large+**: Heavy ETL, ML workloads
+
+Create separate warehouses for different workloads:
+
+```sql
+CREATE WAREHOUSE adhoc_wh WITH 
+  WAREHOUSE_SIZE = 'SMALL'
+  AUTO_SUSPEND = 60
+  AUTO_RESUME = TRUE;
+
+CREATE WAREHOUSE dashboard_wh WITH 
+  WAREHOUSE_SIZE = 'X-SMALL'
+  AUTO_SUSPEND = 120
+  AUTO_RESUME = TRUE;
+```
+
+### Query Optimization
+
+1. **Use Clustering Keys** for large tables:
+   ```sql
+   ALTER TABLE large_table CLUSTER BY (date_column);
+   ```
+
+2. **Partition Pruning**: Filter on clustered columns
+   ```sql
+   SELECT * FROM events 
+   WHERE event_date >= '2024-01-01';
+   ```
+
+3. **Result Caching**: Snowflake caches results for 24 hours
+   - Redash query caching complements this
+
+4. **Limit Result Sets**: Use `LIMIT` for exploratory queries
+
+### Monitoring Usage
+
+Query Snowflake's metadata to track costs:
+
+```sql
+-- Warehouse credit usage
+SELECT 
+  warehouse_name,
+  SUM(credits_used) as total_credits
+FROM 
+  snowflake.account_usage.warehouse_metering_history
+WHERE 
+  start_time >= DATEADD(day, -30, CURRENT_TIMESTAMP())
+GROUP BY 
+  warehouse_name
+ORDER BY 
+  total_credits DESC;
+```
+
+## Troubleshooting
+
+### Connection Failed: Incorrect Account
+
+**Problem**: `250001: Could not connect to Snowflake backend`
+
+**Solutions**:
+1. Verify account identifier format
+2. Check region setting (may need to explicitly set `region`)
+3. Try setting full `host` parameter
+
+Example account formats:
+- Old format: `xy12345.us-east-1`
+- New format: `xy12345.us-east-1.aws`
+- Legacy: `xy12345.east-us-2.azure`
+
+### Authentication Failed
+
+**Problem**: Invalid username/password or key-pair authentication failed
+
+**Solutions**:
+1. **Password**: Verify credentials in Snowflake web UI
+2. **Key-Pair**: 
+   - Confirm public key is set: `DESC USER username;`
+   - Check private key format (must be PKCS#8)
+   - Verify base64 encoding is correct
+   - If encrypted, confirm `private_key_pwd` is correct
+
+### Warehouse Suspended
+
+**Problem**: `002003: Warehouse 'COMPUTE_WH' is suspended`
+
+**Solution**: Enable `AUTO_RESUME` on the warehouse:
+```sql
+ALTER WAREHOUSE compute_wh SET AUTO_RESUME = TRUE;
+```
+
+### Insufficient Privileges
+
+**Problem**: `002003: SQL access control error: Insufficient privileges`
+
+**Solutions**:
+1. Grant required privileges:
+   ```sql
+   GRANT USAGE ON WAREHOUSE compute_wh TO ROLE redash_role;
+   GRANT USAGE ON DATABASE mydb TO ROLE redash_role;
+   GRANT USAGE ON SCHEMA mydb.public TO ROLE redash_role;
+   GRANT SELECT ON ALL TABLES IN SCHEMA mydb.public TO ROLE redash_role;
+   ```
+2. Verify user's active role:
+   ```sql
+   SELECT CURRENT_ROLE();
+   ```
+
+### Schema Not Loading
+
+**Problem**: Tables don't appear in schema browser
+
+**Solutions**:
+1. Check `database` configuration (try with and without schema)
+2. Verify user has `USAGE` on database and schema
+3. Confirm user has `SELECT` privilege on tables
+4. If using `database.schema` format, ensure schema exists
+
+### Slow Queries
+
+**Problem**: Queries taking longer than expected
+
+**Solutions**:
+1. Check warehouse size - may need to scale up
+2. Review query profile in Snowflake web UI
+3. Ensure clustering keys are set on large tables
+4. Check if warehouse is queued (scale out with multi-cluster)
+
+## Example Queries
+
+### Basic Analytics
+
+```sql
+SELECT 
+  DATE_TRUNC('day', order_date) as day,
+  COUNT(*) as order_count,
+  SUM(amount) as revenue
+FROM 
+  orders
+WHERE 
+  order_date >= DATEADD(day, -30, CURRENT_DATE())
+GROUP BY 
+  1
+ORDER BY 
+  1 DESC;
+```
+
+### JSON Querying
+
+```sql
+SELECT 
+  event_data:user_id::NUMBER as user_id,
+  event_data:action::STRING as action,
+  event_data:metadata.browser::STRING as browser,
+  timestamp
+FROM 
+  event_log
+WHERE 
+  event_data:action::STRING = 'click'
+  AND timestamp >= CURRENT_DATE();
+```
+
+### Window Functions
+
+```sql
+SELECT 
+  customer_id,
+  order_date,
+  amount,
+  ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) as order_rank,
+  SUM(amount) OVER (PARTITION BY customer_id) as customer_lifetime_value
+FROM 
+  orders;
+```
+
+### Using Secure Views
+
+```sql
+-- Create a secure view to share with Redash
+CREATE SECURE VIEW analytics.public.customer_metrics AS
+SELECT 
+  customer_id,
+  COUNT(*) as order_count,
+  SUM(amount) as total_spent
+FROM 
+  raw.orders
+GROUP BY 
+  customer_id;
+
+GRANT SELECT ON analytics.public.customer_metrics TO ROLE redash_role;
+```
+
+## Best Practices
+
+1. **Use Key-Pair Authentication**: More secure than passwords, especially for production
+
+2. **Dedicated Warehouses**: Create separate warehouses for Redash with appropriate sizing
+
+3. **Auto-Suspend**: Always enable auto-suspend to control costs
+
+4. **Role-Based Access**: Create a dedicated Redash role with minimal required privileges
+
+5. **Schema Organization**: Use `database.schema` format to scope access appropriately
+
+6. **Query Optimization**:
+   - Use clustering for frequently filtered columns
+   - Leverage result caching
+   - Apply filters early in queries
+
+7. **Monitoring**: Track warehouse usage and query performance in Snowflake
+
+8. **Resource Management**: Use resource monitors to prevent unexpected costs:
+   ```sql
+   CREATE RESOURCE MONITOR redash_monitor WITH 
+     CREDIT_QUOTA = 100
+     TRIGGERS ON 75 PERCENT DO NOTIFY
+             ON 90 PERCENT DO SUSPEND
+             ON 100 PERCENT DO SUSPEND_IMMEDIATE;
+   
+   ALTER WAREHOUSE compute_wh SET RESOURCE_MONITOR = redash_monitor;
+   ```
+
+## Additional Resources
+
+- [Snowflake Documentation](https://docs.snowflake.com/)
+- [Key-Pair Authentication Guide](https://docs.snowflake.com/en/user-guide/key-pair-auth.html)
+- [SQL Reference](https://docs.snowflake.com/en/sql-reference.html)
+- [Best Practices](https://docs.snowflake.com/en/user-guide/ui-snowsight-best-practices.html)

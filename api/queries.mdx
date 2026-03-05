@@ -1,0 +1,461 @@
+---
+title: Queries
+description: Create, manage, and execute queries programmatically
+---
+
+## List Queries
+
+Retrieve a paginated list of queries accessible to the user.
+
+```bash
+GET /api/queries
+```
+
+### Query Parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number to retrieve
+</ParamField>
+
+<ParamField query="page_size" type="number" default="25">
+  Number of queries per page (max: 250)
+</ParamField>
+
+<ParamField query="q" type="string">
+  Full-text search term (searches query text, names, and descriptions)
+</ParamField>
+
+<ParamField query="tags" type="array">
+  Filter by tags (can be specified multiple times)
+</ParamField>
+
+<ParamField query="order" type="string">
+  Sort order. Options: `name`, `-name`, `created_at`, `-created_at`, `schedule`, `-schedule`, `runtime`, `-runtime`, `executed_at`, `-executed_at`, `created_by`, `-created_by`
+</ParamField>
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  "https://redash.example.com/api/queries?page=1&page_size=25&q=users"
+```
+
+### Response
+
+```json
+{
+  "count": 150,
+  "page": 1,
+  "page_size": 25,
+  "results": [
+    {
+      "id": 123,
+      "name": "User Statistics",
+      "description": "Daily active users",
+      "query": "SELECT DATE(created_at) as date, COUNT(*) as users FROM users GROUP BY date",
+      "query_hash": "abc123...",
+      "data_source_id": 1,
+      "latest_query_data_id": 456,
+      "is_archived": false,
+      "is_draft": false,
+      "schedule": {"interval": 3600, "until": null, "day_of_week": null, "time": null},
+      "options": {"parameters": []},
+      "version": 3,
+      "tags": ["analytics", "users"],
+      "api_key": "query_key_123",
+      "user": {"id": 1, "name": "Admin"},
+      "last_modified_by": {"id": 1, "name": "Admin"},
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-20T14:22:00Z",
+      "retrieved_at": "2024-01-20T15:00:00Z",
+      "runtime": 1.23
+    }
+  ]
+}
+```
+
+## Get Query
+
+Retrieve a specific query by ID.
+
+```bash
+GET /api/queries/<query_id>
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/queries/123
+```
+
+### Response Fields
+
+<ResponseField name="id" type="number">
+  Query ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Query name
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Query description
+</ResponseField>
+
+<ResponseField name="query" type="string">
+  Query text (SQL or other query language)
+</ResponseField>
+
+<ResponseField name="query_hash" type="string">
+  Hash of query text for caching
+</ResponseField>
+
+<ResponseField name="data_source_id" type="number">
+  ID of the data source this query runs on
+</ResponseField>
+
+<ResponseField name="latest_query_data_id" type="number">
+  ID of the most recent query result
+</ResponseField>
+
+<ResponseField name="is_archived" type="boolean">
+  Whether the query is archived
+</ResponseField>
+
+<ResponseField name="is_draft" type="boolean">
+  Whether the query is a draft
+</ResponseField>
+
+<ResponseField name="schedule" type="object">
+  Scheduled execution settings (interval in seconds)
+</ResponseField>
+
+<ResponseField name="options" type="object">
+  Query options including parameters
+</ResponseField>
+
+<ResponseField name="version" type="number">
+  Version number for optimistic locking
+</ResponseField>
+
+<ResponseField name="api_key" type="string">
+  API key for public access to query results
+</ResponseField>
+
+<ResponseField name="visualizations" type="array">
+  Array of visualization objects attached to this query
+</ResponseField>
+
+<ResponseField name="can_edit" type="boolean">
+  Whether the current user can edit this query
+</ResponseField>
+
+## Create Query
+
+Create a new query.
+
+```bash
+POST /api/queries
+```
+
+### Request Body
+
+<ParamField body="data_source_id" type="number" required>
+  ID of the data source to run the query on
+</ParamField>
+
+<ParamField body="query" type="string" required>
+  Query text (SQL or other query language)
+</ParamField>
+
+<ParamField body="name" type="string">
+  Query name (defaults to "New Query")
+</ParamField>
+
+<ParamField body="description" type="string">
+  Query description
+</ParamField>
+
+<ParamField body="schedule" type="object">
+  Schedule configuration. Set `interval` to enable scheduled execution (in seconds). Set to `null` to disable scheduling.
+</ParamField>
+
+<ParamField body="options" type="object">
+  Query options including parameters definition
+</ParamField>
+
+<ParamField body="tags" type="array">
+  Array of tag strings
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data_source_id": 1,
+    "query": "SELECT * FROM users WHERE created_at > '{{date}}'",
+    "name": "Recent Users",
+    "description": "Users created after a specific date",
+    "options": {
+      "parameters": [
+        {
+          "name": "date",
+          "title": "Start Date",
+          "type": "date",
+          "value": "2024-01-01"
+        }
+      ]
+    },
+    "tags": ["users", "analytics"]
+  }' \
+  https://redash.example.com/api/queries
+```
+
+### Response
+
+Returns the created query object (same structure as GET query).
+
+## Update Query
+
+Update an existing query.
+
+```bash
+POST /api/queries/<query_id>
+```
+
+### Request Body
+
+Same fields as Create Query, plus:
+
+<ParamField body="version" type="number" required>
+  Current version number (for optimistic locking)
+</ParamField>
+
+<ParamField body="is_draft" type="boolean">
+  Set to `false` to publish a draft query
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT * FROM users WHERE created_at > '{{date}}' LIMIT 100",
+    "name": "Recent Users (Limited)",
+    "version": 3,
+    "is_draft": false
+  }' \
+  https://redash.example.com/api/queries/123
+```
+
+### Response
+
+Returns the updated query object.
+
+<Note>
+  If the version doesn't match the current version, you'll receive a 409 Conflict error. Retrieve the latest version and try again.
+</Note>
+
+## Delete Query
+
+Archive a query (soft delete).
+
+```bash
+DELETE /api/queries/<query_id>
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/queries/123
+```
+
+<Warning>
+  Only admins or the query owner can delete queries.
+</Warning>
+
+## Fork Query
+
+Create a copy of an existing query.
+
+```bash
+POST /api/queries/<query_id>/fork
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/queries/123/fork
+```
+
+### Response
+
+Returns a new query object with copied content.
+
+## Refresh Query
+
+Execute a query and update its results.
+
+```bash
+POST /api/queries/<query_id>/refresh
+```
+
+### Query Parameters
+
+<ParamField query="p_<parameter_name>" type="string">
+  Parameter values. For a parameter named `date`, use `p_date=2024-01-01`
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  "https://redash.example.com/api/queries/123/refresh?p_date=2024-01-01"
+```
+
+### Response
+
+Returns a job object or query result:
+
+```json
+{
+  "job": {
+    "id": "job_id",
+    "status": 1,
+    "query_result_id": null,
+    "error": "",
+    "updated_at": 0
+  }
+}
+```
+
+Or if cached:
+
+```json
+{
+  "query_result": {
+    "id": 456,
+    "data": {...},
+    "retrieved_at": "2024-01-20T15:00:00Z",
+    "runtime": 1.23
+  }
+}
+```
+
+<Note>
+  Query API keys cannot be used for the refresh endpoint. Use a user API key instead.
+</Note>
+
+## Recent Queries
+
+Get recently modified queries for the current user.
+
+```bash
+GET /api/queries/recent
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/queries/recent
+```
+
+### Response
+
+Returns up to 10 recently updated queries.
+
+## My Queries
+
+Get queries created by the current user.
+
+```bash
+GET /api/queries/my
+```
+
+Supports the same parameters as List Queries.
+
+## Favorite Queries
+
+Get queries marked as favorites by the current user.
+
+```bash
+GET /api/queries/favorites
+```
+
+Supports the same parameters as List Queries.
+
+## Query Tags
+
+Get all available query tags.
+
+```bash
+GET /api/queries/tags
+```
+
+### Response
+
+```json
+{
+  "tags": [
+    {"name": "analytics", "count": 45},
+    {"name": "users", "count": 23},
+    {"name": "reports", "count": 12}
+  ]
+}
+```
+
+## Format SQL
+
+Format SQL query text.
+
+```bash
+POST /api/queries/format
+```
+
+### Request Body
+
+```json
+{
+  "query": "select * from users where id=1"
+}
+```
+
+### Response
+
+```json
+{
+  "query": "SELECT *\nFROM users\nWHERE id = 1"
+}
+```
+
+## Regenerate API Key
+
+Generate a new API key for query result access.
+
+```bash
+POST /api/queries/<query_id>/regenerate_api_key
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/queries/123/regenerate_api_key
+```
+
+### Response
+
+Returns the query object with the new `api_key` field.

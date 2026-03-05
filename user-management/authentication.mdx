@@ -1,0 +1,586 @@
+---
+title: Authentication Methods
+description: Configure and use different authentication methods in Redash including Google OAuth, SAML, LDAP, JWT, and remote user authentication
+---
+
+## Overview
+
+Redash supports multiple authentication methods to integrate with your existing identity infrastructure. Users can authenticate via:
+
+- Password-based authentication (built-in)
+- Google OAuth
+- SAML 2.0
+- LDAP
+- JWT tokens
+- Remote user headers (reverse proxy)
+
+Authentication type is determined by the `AUTH_TYPE` setting and per-organization authentication settings.
+
+## Password Authentication
+
+### Setup
+
+Password authentication is enabled by default. Users can:
+- Set passwords when accepting invitations
+- Reset passwords via email
+- Change passwords through their profile
+
+### Password Storage
+
+Passwords are hashed using the Passlib library with a custom application context:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/users.py:219-223`):
+
+```python
+def hash_password(self, password):
+    self.password_hash = pwd_context.hash(password)
+
+def verify_password(self, password):
+    return self.password_hash and pwd_context.verify(password, self.password_hash)
+```
+
+### User Authentication Type
+
+Users are marked with an authentication type in their profile:
+- `password`: Has a password hash (local authentication)
+- `external`: No password hash (uses external authentication)
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/users.py:150-153`):
+
+```python
+if self.password_hash is None:
+    d["auth_type"] = "external"
+else:
+    d["auth_type"] = "password"
+```
+
+## Google OAuth
+
+### Configuration
+
+Google OAuth uses Authlib for OpenID Connect authentication.
+
+**Required settings:**
+- OAuth client credentials (configured via environment or Authlib)
+- Optional: `GOOGLE_OAUTH_SCHEME_OVERRIDE` for HTTPS callback URLs
+
+### Authentication Flow
+
+1. User clicks "Sign in with Google"
+2. User is redirected to Google's OAuth consent screen
+3. Google redirects back to `/oauth/google_callback`
+4. Redash validates the access token
+5. User profile is fetched from Google's userinfo endpoint
+6. User is authenticated or created via JIT provisioning
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/google_oauth.py:97-142`):
+
+```python
+@blueprint.route("/oauth/google_callback", endpoint="callback")
+def authorized():
+    resp = oauth.google.authorize_access_token()
+    user = resp.get("userinfo")
+    
+    access_token = resp["access_token"]
+    profile = get_user_profile(access_token, logger)
+    
+    if not verify_profile(org, profile):
+        flash("Your Google Apps account ({}) isn't allowed.".format(profile["email"]))
+        return redirect(url_for("redash.login", org_slug=org.slug))
+    
+    picture_url = "%s?sz=40" % profile["picture"]
+    user = create_and_login_user(org, profile["name"], profile["email"], picture_url)
+```
+
+### Domain Restrictions
+
+Organizations can restrict Google OAuth to specific domains:
+
+**Verification logic** (from `/home/daytona/workspace/source/redash/authentication/google_oauth.py:16-29`):
+
+```python
+def verify_profile(org, profile):
+    if org.is_public:
+        return True
+    
+    email = profile["email"]
+    domain = email.split("@")[-1]
+    
+    if domain in org.google_apps_domains:
+        return True
+    
+    if org.has_user(email) == 1:
+        return True
+    
+    return False
+```
+
+Users are allowed if:
+1. Organization is public, OR
+2. Email domain is in `google_apps_domains`, OR
+3. User already exists in the organization
+
+### Just-In-Time Provisioning
+
+Users authenticating via Google OAuth are automatically created if they don't exist:
+- Name and email are taken from Google profile
+- Profile picture URL is stored
+- User is added to the organization's default group
+- `is_invitation_pending` is set to `false`
+
+## SAML 2.0
+
+### Configuration
+
+SAML authentication is configured per-organization using organization settings:
+
+**Required settings:**
+- `auth_saml_enabled`: Enable SAML for the organization
+- `auth_saml_entity_id`: IdP entity ID
+- `auth_saml_sso_url`: IdP single sign-on URL
+- `auth_saml_x509_cert`: IdP X.509 certificate (for static metadata)
+- `auth_saml_metadata_url`: IdP metadata URL (for dynamic metadata)
+
+**Optional settings:**
+- `auth_saml_nameid_format`: NameID format (default: transient)
+- `auth_saml_sp_settings`: Additional service provider settings (JSON)
+- `SAML_SCHEME_OVERRIDE`: Force HTTPS for callback URLs
+- `SAML_ENCRYPTION_ENABLED`: Enable assertion encryption
+- `SAML_ENCRYPTION_PEM_PATH`: Path to encryption private key
+- `SAML_ENCRYPTION_CERT_PATH`: Path to encryption certificate
+
+### Metadata Configuration
+
+**Static metadata (inline):**
+
+Set `auth_saml_type` to `static` and provide:
+- `auth_saml_entity_id`
+- `auth_saml_sso_url`
+- `auth_saml_x509_cert`
+
+**Dynamic metadata (remote):**
+
+Provide `auth_saml_metadata_url` pointing to IdP's metadata endpoint.
+
+### Authentication Flow
+
+**SP-Initiated:** `GET /{org_slug}/saml/login`
+
+1. User navigates to SAML login endpoint
+2. Redash generates AuthN request
+3. User is redirected to IdP
+4. User authenticates at IdP
+5. IdP posts SAML response to callback
+6. Redash validates and processes assertion
+
+**IdP-Initiated:** `POST /{org_slug}/saml/callback`
+
+1. User authenticates at IdP
+2. IdP posts SAML response to Redash callback
+3. Redash validates assertion
+4. User is authenticated or created
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/saml_auth.py:109-146`):
+
+```python
+@blueprint.route(org_scoped_rule("/saml/callback"), methods=["POST"])
+def idp_initiated(org_slug=None):
+    saml_client = get_saml_client(current_org)
+    authn_response = saml_client.parse_authn_request_response(
+        request.form["SAMLResponse"], entity.BINDING_HTTP_POST
+    )
+    
+    authn_response.get_identity()
+    user_info = authn_response.get_subject()
+    email = user_info.text
+    name = "%s %s" % (
+        authn_response.ava["FirstName"][0],
+        authn_response.ava["LastName"][0],
+    )
+    
+    user = create_and_login_user(current_org, name, email)
+```
+
+### Group Synchronization
+
+SAML responses can include group assignments via the `RedashGroups` attribute:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/saml_auth.py:140-142`):
+
+```python
+if "RedashGroups" in authn_response.ava:
+    group_names = authn_response.ava.get("RedashGroups")
+    user.update_group_assignments(group_names)
+```
+
+This updates the user's group memberships to match the groups specified in the SAML assertion.
+
+### SAML Assertion Requirements
+
+**Required attributes:**
+- Subject (NameID) containing user email
+- `FirstName`: User's first name
+- `LastName`: User's last name
+
+**Optional attributes:**
+- `RedashGroups`: Array of group names for group sync
+
+## LDAP
+
+### Configuration
+
+**Required settings:**
+- `LDAP_LOGIN_ENABLED`: Enable LDAP authentication
+- `LDAP_HOST_URL`: LDAP server URL (e.g., `ldap://ldap.example.com`)
+- `LDAP_SEARCH_DN`: Base DN for user searches
+- `LDAP_SEARCH_TEMPLATE`: Search filter template (e.g., `(uid=%(username)s)`)
+- `LDAP_DISPLAY_NAME_KEY`: Attribute for display name
+- `LDAP_EMAIL_KEY`: Attribute for email address
+
+**Optional settings:**
+- `LDAP_SSL`: Use SSL/TLS (default: false)
+- `LDAP_BIND_DN`: Bind DN for authenticated searches
+- `LDAP_BIND_DN_PASSWORD`: Password for bind DN
+- `LDAP_AUTH_METHOD`: Authentication method
+- `LDAP_CUSTOM_USERNAME_PROMPT`: Custom username field label
+
+### Authentication Flow
+
+**Endpoint:** `GET/POST /{org_slug}/ldap/login`
+
+1. User submits username and password
+2. Redash binds to LDAP server (with bind DN if configured)
+3. User is searched using `LDAP_SEARCH_TEMPLATE`
+4. Redash rebinds with user's DN and password
+5. User attributes are retrieved
+6. User is authenticated or created via JIT provisioning
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/ldap_auth.py:72-100`):
+
+```python
+def auth_ldap_user(username, password):
+    clean_username = escape_filter_chars(username)
+    server = Server(settings.LDAP_HOST_URL, use_ssl=settings.LDAP_SSL)
+    
+    if settings.LDAP_BIND_DN is not None:
+        conn = Connection(
+            server,
+            settings.LDAP_BIND_DN,
+            password=settings.LDAP_BIND_DN_PASSWORD,
+            authentication=settings.LDAP_AUTH_METHOD,
+            auto_bind=True,
+        )
+    else:
+        conn = Connection(server, auto_bind=True)
+    
+    conn.search(
+        settings.LDAP_SEARCH_DN,
+        settings.LDAP_SEARCH_TEMPLATE % {"username": clean_username},
+        attributes=[settings.LDAP_DISPLAY_NAME_KEY, settings.LDAP_EMAIL_KEY],
+    )
+    
+    if len(conn.entries) == 0:
+        return None
+    
+    user = conn.entries[0]
+    
+    if not conn.rebind(user=user.entry_dn, password=password):
+        return None
+    
+    return user
+```
+
+### Security Considerations
+
+- Usernames are sanitized using `escape_filter_chars` to prevent LDAP injection
+- Password validation happens via LDAP rebind
+- Failed authentication returns generic error message
+
+## JWT Authentication
+
+### Configuration
+
+JWT authentication is configured per-organization:
+
+**Required settings:**
+- `auth_jwt_login_enabled`: Enable JWT authentication
+- `auth_jwt_auth_public_certs_url`: URL or file path to public keys
+- `auth_jwt_auth_issuer`: Expected token issuer
+- `auth_jwt_auth_audience`: Expected token audience
+- `auth_jwt_auth_algorithms`: Allowed signing algorithms (array)
+
+**Token delivery:**
+- `auth_jwt_auth_cookie_name`: Cookie name containing JWT, OR
+- `auth_jwt_auth_header_name`: HTTP header containing JWT
+
+### Authentication Flow
+
+1. Client includes JWT in cookie or header
+2. Redash retrieves JWT from request
+3. Token is validated against public key
+4. Issuer and audience are verified
+5. Email is extracted from token claims
+6. User is authenticated or created
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/__init__.py:164-199`):
+
+```python
+def jwt_token_load_user_from_request(request):
+    if org_settings["auth_jwt_auth_cookie_name"]:
+        jwt_token = request.cookies.get(org_settings["auth_jwt_auth_cookie_name"], None)
+    elif org_settings["auth_jwt_auth_header_name"]:
+        jwt_token = request.headers.get(org_settings["auth_jwt_auth_header_name"], None)
+    else:
+        return None
+    
+    if jwt_token:
+        payload, token_is_valid = jwt_auth.verify_jwt_token(
+            jwt_token,
+            expected_issuer=org_settings["auth_jwt_auth_issuer"],
+            expected_audience=org_settings["auth_jwt_auth_audience"],
+            algorithms=org_settings["auth_jwt_auth_algorithms"],
+            public_certs_url=org_settings["auth_jwt_auth_public_certs_url"],
+        )
+        if not token_is_valid:
+            raise Unauthorized("Invalid JWT token")
+    
+    if "email" not in payload:
+        logger.info("No email field in token, refusing to login")
+        return
+    
+    try:
+        user = models.User.get_by_email_and_org(payload["email"], org)
+    except models.NoResultFound:
+        user = create_and_login_user(current_org, payload["email"], payload["email"])
+```
+
+### Public Key Configuration
+
+**Remote JWKS URL:**
+
+```
+auth_jwt_auth_public_certs_url: https://example.com/.well-known/jwks.json
+```
+
+**Local file:**
+
+```
+auth_jwt_auth_public_certs_url: file:///path/to/public_key.pem
+```
+
+**Key caching:**
+
+Public keys are cached in memory to avoid repeated fetches:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/jwt_auth.py:38-55`):
+
+```python
+def get_public_keys(url):
+    key_cache = get_public_keys.key_cache
+    keys = {}
+    if url in key_cache:
+        keys = key_cache[url]
+    else:
+        if url.startswith(FILE_SCHEME_PREFIX):
+            keys = [get_public_key_from_file(url)]
+        else:
+            keys = get_public_key_from_net(url)
+    return keys
+
+get_public_keys.key_cache = {}
+```
+
+### Token Validation
+
+JWT tokens are validated for:
+- Valid signature (using public key)
+- Correct issuer (`iss` claim)
+- Correct audience (`aud` claim)
+- Expiration (standard `exp` claim)
+
+If multiple keys are available (JWKS), each key is tried until one succeeds.
+
+## Remote User Authentication
+
+### Configuration
+
+**Required settings:**
+- `REMOTE_USER_LOGIN_ENABLED`: Enable remote user authentication
+- `REMOTE_USER_HEADER`: HTTP header containing authenticated username
+
+### Authentication Flow
+
+**Endpoint:** `GET /{org_slug}/remote_user/login`
+
+1. Reverse proxy authenticates user
+2. Proxy sets header with username (e.g., `X-Forwarded-User`)
+3. Redash reads username from header
+4. User is authenticated or created
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/remote_user_auth.py:19-51`):
+
+```python
+@blueprint.route(org_scoped_rule("/remote_user/login"))
+def login(org_slug=None):
+    email = request.headers.get(settings.REMOTE_USER_HEADER)
+    
+    # Some Apache auth configurations set (null) instead of falsey value
+    if email == "(null)":
+        email = None
+    
+    if not email:
+        logger.error(
+            "Cannot use remote user for login when it's not provided in the request"
+        )
+        return redirect(url_for("redash.index", next=next_path, org_slug=org_slug))
+    
+    user = create_and_login_user(current_org, email, email)
+```
+
+### Security Considerations
+
+**Critical:** Remote user authentication relies entirely on the reverse proxy for security. Ensure:
+
+1. Redash is NOT directly accessible (only via proxy)
+2. The header is NOT passed through from client requests
+3. Proxy strips any client-provided header before adding its own
+
+## API Key Authentication
+
+### User API Keys
+
+Every user has a personal API key for programmatic access:
+
+**Usage:**
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" https://redash.example.com/api/queries
+```
+
+Or via query parameter:
+
+```
+https://redash.example.com/api/queries?api_key=YOUR_API_KEY
+```
+
+### Query API Keys
+
+Queries can have dedicated API keys for public/embedded access:
+
+- Limited to viewing query results
+- Can be used in dashboard embed URLs
+- Do not grant broader access
+
+**Implementation** (from `/home/daytona/workspace/source/redash/models/users.py:388-419`):
+
+```python
+class ApiUser(UserMixin, PermissionsCheckMixin):
+    def __init__(self, api_key, org, groups, name=None):
+        self.object = None
+        if isinstance(api_key, str):
+            self.id = api_key
+            self.name = name
+        else:
+            self.id = api_key.api_key
+            self.name = "ApiKey: {}".format(api_key.id)
+            self.object = api_key.object
+        self.group_ids = groups
+        self.org = org
+    
+    @property
+    def permissions(self):
+        return ["view_query"]
+```
+
+## Session Management
+
+### Session Duration
+
+**Settings:**
+- `SESSION_EXPIRY_TIME`: Session lifetime in seconds
+- `REMEMBER_COOKIE_DURATION`: Remember cookie lifetime (timedelta)
+
+**Session extension:**
+
+Sessions are marked as permanent and extended on each request:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/__init__.py:250-253`):
+
+```python
+@app.before_request
+def extend_session():
+    session.permanent = True
+    app.permanent_session_lifetime = timedelta(seconds=settings.SESSION_EXPIRY_TIME)
+```
+
+### Login Tracking
+
+User login events are tracked:
+- Timestamp
+- User agent
+- IP address
+- Organization
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/__init__.py:202-213`):
+
+```python
+def log_user_logged_in(app, user):
+    event = {
+        "org_id": user.org_id,
+        "user_id": user.id,
+        "action": "login",
+        "object_type": "redash",
+        "timestamp": int(time.time()),
+        "user_agent": request.user_agent.string,
+        "ip": request.remote_addr,
+    }
+    record_event.delay(event)
+```
+
+## Just-In-Time User Provisioning
+
+All external authentication methods support automatic user creation:
+
+**Implementation** (from `/home/daytona/workspace/source/redash/authentication/__init__.py:271-298`):
+
+```python
+def create_and_login_user(org, name, email, picture=None):
+    try:
+        user_object = models.User.get_by_email_and_org(email, org)
+        if user_object.is_disabled:
+            return None
+        if user_object.is_invitation_pending:
+            user_object.is_invitation_pending = False
+            models.db.session.commit()
+    except NoResultFound:
+        user_object = models.User(
+            org=org,
+            name=name,
+            email=email,
+            is_invitation_pending=False,
+            _profile_image_url=picture,
+            group_ids=[org.default_group.id],
+        )
+        models.db.session.add(user_object)
+        models.db.session.commit()
+    
+    login_user(user_object, remember=True)
+    return user_object
+```
+
+**Behavior:**
+- If user exists and is enabled, log them in
+- If user exists but is disabled, deny access
+- If user doesn't exist, create them and log them in
+- New users are added to the default group
+- `is_invitation_pending` is set to `false`
+
+## Best Practices
+
+1. **Use external authentication:** Leverage existing identity infrastructure (SSO)
+2. **Disable unused methods:** Only enable authentication methods you need
+3. **Domain restrictions:** Use domain allowlists for OAuth when possible
+4. **Secure remote user auth:** Ensure reverse proxy is properly configured
+5. **Rotate API keys:** Regenerate API keys if compromised
+6. **Monitor login events:** Review authentication logs regularly
+7. **Group synchronization:** Use SAML group attributes to automate access management

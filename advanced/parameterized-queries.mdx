@@ -1,0 +1,474 @@
+---
+title: "Parameterized Queries"
+description: "Add dynamic parameters to queries with dropdowns, date pickers, and text inputs"
+---
+
+## Overview
+
+Parameterized queries allow you to create dynamic queries with user inputs. Instead of hardcoding values, you can use parameters that users can modify through dropdowns, date pickers, text fields, and more.
+
+## Parameter Syntax
+
+Parameters use Mustache template syntax with double curly braces:
+
+```sql
+SELECT *
+FROM orders
+WHERE status = '{{status}}'
+  AND created_at >= '{{start_date}}'
+```
+
+When you save a query with `{{parameter_name}}`, Redash automatically detects it and creates a parameter input.
+
+## Parameter Types
+
+### Text Input
+
+Simple text input field:
+
+```sql
+SELECT * FROM users WHERE email LIKE '%{{search_term}}%'
+```
+
+Configure:
+- **Type**: Text
+- **Title**: Display label (e.g., "Search Term")
+
+### Number Input
+
+Numeric values only:
+
+```sql
+SELECT * FROM products WHERE price > {{min_price}}
+```
+
+Configure:
+- **Type**: Number
+- **Title**: "Minimum Price"
+
+### Dropdown (Static)
+
+Predefined list of options:
+
+```sql
+SELECT * FROM orders WHERE status = '{{status}}'
+```
+
+Configure:
+- **Type**: Dropdown List
+- **Title**: "Order Status"
+- **Values**: One value per line
+  ```
+  pending
+  processing
+  shipped
+  delivered
+  cancelled
+  ```
+
+### Dropdown (Query-based)
+
+Dynamic dropdown populated from another query:
+
+```sql
+SELECT * FROM orders WHERE user_id = {{user_id}}
+```
+
+Configure:
+- **Type**: Query Based Dropdown List
+- **Title**: "User"
+- **Query**: Select a query that returns name/value pairs
+
+The source query should return two columns:
+- First column (or "name" column): Display value
+- Second column (or "value" column): Actual value to use
+
+Example source query:
+```sql
+SELECT 
+  email AS name,
+  id AS value
+FROM users
+ORDER BY email
+```
+
+### Date Picker
+
+Calendar date selection:
+
+```sql
+SELECT * FROM events WHERE event_date = '{{event_date}}'
+```
+
+Configure:
+- **Type**: Date
+- **Title**: "Event Date"
+
+### Date and Time
+
+Date with time selection:
+
+```sql
+SELECT * FROM logs WHERE created_at >= '{{start_time}}'
+```
+
+Configure:
+- **Type**: Date and Time
+- **Title**: "Start Time"
+
+Variants:
+- **Date and Time**: Without seconds
+- **Date and Time (with seconds)**: Includes seconds
+
+### Date Range
+
+Start and end date selection:
+
+```sql
+SELECT *
+FROM sales
+WHERE sale_date BETWEEN '{{date_range.start}}' AND '{{date_range.end}}'
+```
+
+Configure:
+- **Type**: Date Range
+- **Title**: "Date Range"
+
+Access values:
+- `{{date_range.start}}` - Start date
+- `{{date_range.end}}` - End date
+
+### Date and Time Range
+
+Date range with time:
+
+```sql
+SELECT *
+FROM events
+WHERE created_at BETWEEN '{{datetime_range.start}}' AND '{{datetime_range.end}}'
+```
+
+Variants:
+- **Date and Time Range**: Without seconds
+- **Date and Time Range (with seconds)**: Includes seconds
+
+## Multi-Value Parameters
+
+Allow selecting multiple values from a dropdown:
+
+```sql
+SELECT *
+FROM orders
+WHERE status IN ({{status}})
+```
+
+Configure:
+- Enable **Allow multiple values**
+- Set **Quotation**: Single quotes for strings
+- **Prefix**: Add `(` 
+- **Suffix**: Add `)`
+
+Result with values `["pending", "processing"]`:
+```sql
+WHERE status IN ('pending','processing')
+```
+
+### Multi-Value Options
+
+- **Separator**: Character between values (default: `,`)
+- **Prefix**: Text before each value (e.g., `'` for strings)
+- **Suffix**: Text after each value (e.g., `'` for strings)
+
+Example for `IN` clause:
+```
+Separator: ,
+Prefix: '
+Suffix: '
+```
+
+Output: `'value1','value2','value3'`
+
+## Advanced Features
+
+### Pattern Matching (Regex)
+
+Validate text input with regex:
+
+Configure:
+- **Type**: Text Pattern
+- **Regex**: `^[A-Z]{2}\d{4}$` (e.g., for order codes like AB1234)
+- **Error Message**: "Must be 2 letters followed by 4 digits"
+
+### Default Values
+
+Set default parameter values:
+
+```sql
+SELECT * FROM orders WHERE status = '{{status}}'
+```
+
+In parameter settings, set default to `pending`.
+
+### Conditional Logic
+
+Use Mustache sections for conditional query parts:
+
+```sql
+SELECT *
+FROM orders
+WHERE 1=1
+{{#status}}
+  AND status = '{{status}}'
+{{/status}}
+{{#min_amount}}
+  AND total >= {{min_amount}}
+{{/min_amount}}
+```
+
+Sections render only when the parameter has a value.
+
+## API Usage
+
+### Execute with Parameters
+
+```bash
+curl -X POST "https://redash.company.com/api/queries/42/results" \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parameters": {
+      "status": "shipped",
+      "start_date": "2024-01-01",
+      "min_amount": 100
+    },
+    "max_age": 0
+  }'
+```
+
+### Get Dropdown Values
+
+Fetch values for a query-based dropdown:
+
+```bash
+GET /api/queries/<query_id>/dropdown
+```
+
+Response:
+```json
+[
+  {"name": "Alice", "value": "1"},
+  {"name": "Bob", "value": "2"},
+  {"name": "Charlie", "value": "3"}
+]
+```
+
+### Get Related Dropdown Values
+
+For dependent dropdowns in the same query:
+
+```bash
+GET /api/queries/<query_id>/dropdowns/<dropdown_query_id>
+```
+
+## Parameter Validation
+
+Redash validates parameters against their schema:
+
+- **Text**: Must be string
+- **Text Pattern**: Must match regex
+- **Number**: Must be numeric
+- **Enum/Dropdown**: Must be in allowed values
+- **Query Dropdown**: Must be in query results
+- **Date/DateTime**: Must be valid date format
+- **Date Range**: Must have valid start and end dates
+
+Invalid parameters return HTTP 400:
+
+```json
+{
+  "message": "The following parameter values are incompatible with their definitions: status, start_date"
+}
+```
+
+## Examples
+
+### User Dashboard Filter
+
+```sql
+SELECT 
+  DATE(created_at) as date,
+  COUNT(*) as signups
+FROM users
+WHERE created_at BETWEEN '{{date_range.start}}' AND '{{date_range.end}}'
+  AND country = '{{country}}'
+GROUP BY DATE(created_at)
+ORDER BY date
+```
+
+Parameters:
+- `date_range`: Date Range (default: last 30 days)
+- `country`: Dropdown from countries query
+
+### Sales Report with Multiple Filters
+
+```sql
+SELECT
+  order_id,
+  customer_name,
+  total,
+  status,
+  created_at
+FROM orders
+WHERE 1=1
+{{#status}}
+  AND status IN ({{status}})
+{{/status}}
+{{#min_amount}}
+  AND total >= {{min_amount}}
+{{/min_amount}}
+{{#customer_search}}
+  AND customer_name ILIKE '%{{customer_search}}%'
+{{/customer_search}}
+ORDER BY created_at DESC
+```
+
+Parameters:
+- `status`: Multi-value dropdown (pending, processing, shipped, delivered)
+- `min_amount`: Number (optional)
+- `customer_search`: Text (optional)
+
+### Dynamic Column Selection
+
+```sql
+SELECT 
+  {{group_by}} as dimension,
+  COUNT(*) as count,
+  SUM(revenue) as total_revenue
+FROM sales
+WHERE sale_date >= '{{start_date}}'
+GROUP BY {{group_by}}
+ORDER BY total_revenue DESC
+```
+
+Parameters:
+- `group_by`: Dropdown (category, region, salesperson)
+- `start_date`: Date
+
+<Warning>
+**SQL Injection Risk**: Using parameters for column/table names can be dangerous. Only use with restricted dropdown values.
+</Warning>
+
+### Cascading Dropdowns
+
+```sql
+-- Main query
+SELECT *
+FROM products
+WHERE category_id = {{category}}
+  AND subcategory_id = {{subcategory}}
+
+-- Category dropdown query (Query ID: 100)
+SELECT name, id as value FROM categories ORDER BY name
+
+-- Subcategory dropdown query (Query ID: 101)
+SELECT 
+  name,
+  id as value
+FROM subcategories
+WHERE category_id = {{category}}
+ORDER BY name
+```
+
+Configure:
+- `category`: Query-based dropdown (Query 100)
+- `subcategory`: Query-based dropdown (Query 101) - depends on category
+
+## Embedding with Parameters
+
+Pass parameters in embedded URLs:
+
+```html
+<iframe
+  src="https://redash.company.com/embed/query/42/visualization/83?p_status=shipped&p_start_date=2024-01-01"
+  width="800"
+  height="600"
+></iframe>
+```
+
+Parameters are prefixed with `p_` in URLs.
+
+## Best Practices
+
+<Tip>
+**Use descriptive titles**: Instead of "param1", use "Order Status" or "Date Range"
+</Tip>
+
+### Performance
+
+1. **Limit dropdown query results**: Keep query-based dropdowns under 1000 items
+   ```sql
+   SELECT name, id FROM users LIMIT 1000
+   ```
+
+2. **Index filtered columns**: Ensure database columns used in WHERE clauses are indexed
+
+3. **Use date ranges wisely**: Default to reasonable ranges (e.g., last 30 days) instead of all-time
+
+### Security
+
+1. **Avoid dynamic table/column names**: Use dropdowns with fixed values only
+2. **Use query-based dropdowns**: They validate against actual data
+3. **Set parameter types correctly**: Number types prevent SQL injection
+
+### Usability
+
+1. **Provide sensible defaults**: Users shouldn't need to fill everything
+2. **Use optional parameters**: Wrap in Mustache sections (`{{#param}}...{{/param}}`)
+3. **Order parameters logically**: Most important filters first
+4. **Group related queries**: Keep dropdown source queries organized
+
+## Troubleshooting
+
+### Parameter Not Detected
+
+**Problem**: `{{param}}` appears as literal text
+
+**Solution**: Ensure you're using double curly braces and save the query.
+
+### Query-Based Dropdown Empty
+
+**Problem**: Dropdown shows no values
+
+**Solution**:
+1. Execute the source query to verify it returns results
+2. Ensure query returns at least one column
+3. Check you have permission to access the source query
+
+### Invalid Parameter Error
+
+**Problem**: `The following parameter values are incompatible with their definitions`
+
+**Solution**: 
+1. Verify parameter value matches expected type
+2. For dropdowns, ensure value exists in the list
+3. For date ranges, check both start and end are provided
+
+### Detached Query Error
+
+**Problem**: `This query is detached from any data source`
+
+**Solution**: Query-based dropdown source query must have a data source selected.
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="Embedding" icon="code" href="/advanced/embedding">
+  Embed parameterized queries in applications
+</Card>
+
+<Card title="Python Queries" icon="python" href="/advanced/python-queries">
+  Use parameters in Python data sources
+</Card>
+
+</CardGroup>

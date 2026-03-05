@@ -1,80 +1,276 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get Redash running and create your first dashboard in minutes"
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide walks you through installing Redash, connecting to a database, and creating your first visualization and dashboard.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  This quickstart uses Docker Compose for simplicity. For production deployments, see the [Installation Guide](/installation).
+</Note>
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- Docker and Docker Compose installed
+- At least 2GB of available RAM
+- A database to connect to (PostgreSQL, MySQL, etc.)
+- Port 5000 available on your system
+
+## Step 1: Install Redash
+
+<Steps>
+  <Step title="Download and run the setup script">
+    ```bash
+    curl -O https://raw.githubusercontent.com/getredash/setup/master/setup.sh
+    chmod +x setup.sh
+    ./setup.sh
+    ```
+    
+    This script:
+    - Downloads the docker-compose.yml configuration
+    - Generates secure random keys for REDASH_COOKIE_SECRET and REDASH_SECRET_KEY
+    - Creates a .env file with configuration
+    - Starts all required services (PostgreSQL, Redis, Redash server and workers)
+    
+    <Tip>The script may take a few minutes to download images and start services.</Tip>
+  </Step>
+
+  <Step title="Access Redash">
+    Once the setup completes, open your browser and navigate to:
+    
+    ```
+    http://localhost:5000
+    ```
+    
+    You'll see the Redash setup wizard.
+  </Step>
+
+  <Step title="Create an admin account">
+    Fill in the setup form:
+    - **Admin Name**: Your full name
+    - **Email**: Your email address (used for login)
+    - **Password**: Choose a secure password
+    - **Organization Name**: Your company or team name
+    
+    Click **Setup** to create your account and organization.
+  </Step>
+</Steps>
+
+## Step 2: Connect Your First Data Source
+
+<Steps>
+  <Step title="Navigate to Data Sources">
+    After logging in, click **Settings** in the navigation menu, then select **Data Sources**.
+  </Step>
+
+  <Step title="Add a new data source">
+    1. Click **New Data Source**
+    2. Select your database type from the list (e.g., PostgreSQL, MySQL, MongoDB)
+    3. Fill in the connection details
+    
+    <Accordion title="Example: Connecting to PostgreSQL">
+      ```yaml
+      Type: PostgreSQL
+      Name: Production DB
+      Host: your-database-host.com
+      Port: 5432
+      User: readonly_user
+      Password: ••••••••
+      Database Name: analytics
+      SSL Mode: prefer
+      ```
+    </Accordion>
+  </Step>
+
+  <Step title="Test the connection">
+    Click **Test Connection** to verify Redash can connect to your database. If successful, click **Create** to save the data source.
+    
+    <Warning>
+      Always use read-only database credentials. Redash only needs SELECT permissions.
+    </Warning>
+  </Step>
+</Steps>
+
+## Step 3: Create Your First Query
+
+<Steps>
+  <Step title="Create a new query">
+    1. Click **Create** in the top navigation
+    2. Select **Query**
+    3. Choose your data source from the dropdown
+  </Step>
+
+  <Step title="Write your SQL">
+    Use the query editor to write SQL. The schema browser on the left shows available tables and columns.
+    
+    ```sql
+    SELECT 
+      date_trunc('day', created_at) as day,
+      count(*) as signups
+    FROM users
+    WHERE created_at >= current_date - interval '30 days'
+    GROUP BY 1
+    ORDER BY 1
+    ```
+    
+    <Tip>
+      Press `Ctrl/Cmd + Enter` to execute the query, or click **Execute**.
+    </Tip>
+  </Step>
+
+  <Step title="Review the results">
+    Query results appear in a table below the editor. You'll see:
+    - Execution time
+    - Row count
+    - Raw data in table format
+  </Step>
+
+  <Step title="Save your query">
+    1. Give your query a descriptive name (e.g., "Daily Signups - Last 30 Days")
+    2. Click **Save** or press `Ctrl/Cmd + S`
+  </Step>
+</Steps>
+
+## Step 4: Create a Visualization
+
+<Steps>
+  <Step title="Add a visualization">
+    With your query results visible, click **+ New Visualization** below the results table.
+  </Step>
+
+  <Step title="Choose a visualization type">
+    Select **Chart** from the visualization types. Redash will attempt to auto-configure the chart based on your data.
+  </Step>
+
+  <Step title="Configure the chart">
+    In the visualization editor:
+    
+    - **Chart Type**: Select "Line" (or Bar, Area, Pie, etc.)
+    - **X Column**: Select `day` (your date field)
+    - **Y Columns**: Select `signups` (your metric)
+    
+    <Accordion title="Advanced options">
+      - **X Axis Label**: "Date"
+      - **Y Axis Label**: "New Signups"
+      - **Series Name**: "Signups"
+      - Enable **Show Data Labels** for point values
+      - Customize **Colors** to match your brand
+    </Accordion>
+  </Step>
+
+  <Step title="Save the visualization">
+    1. Give it a name (e.g., "Signups Trend")
+    2. Click **Save**
+    
+    You'll see your chart appear above the query results.
+  </Step>
+</Steps>
+
+## Step 5: Build a Dashboard
+
+<Steps>
+  <Step title="Create a dashboard">
+    1. Click **Create** → **Dashboard**
+    2. Name your dashboard (e.g., "Growth Metrics")
+    3. Click **Save**
+  </Step>
+
+  <Step title="Add your visualization">
+    1. Click **Add Widget**
+    2. Search for your saved query
+    3. Select the visualization you created
+    4. Click **Add to Dashboard**
+  </Step>
+
+  <Step title="Arrange widgets">
+    - Drag widgets to reposition them
+    - Resize by dragging the bottom-right corner
+    - Add more widgets from other queries
+    
+    <Tip>
+      Organize related metrics together for easy scanning.
+    </Tip>
+  </Step>
+
+  <Step title="Publish and share">
+    1. Click **Publish** in the dashboard header to make it visible to others
+    2. Share the dashboard URL with your team
+    3. Set up **Auto Refresh** to keep data current
+    
+    <Accordion title="Sharing options">
+      - **Internal**: Share with users in your organization
+      - **Public Link**: Generate a public URL (requires enabling in settings)
+      - **Embed**: Embed the dashboard in other applications
+    </Accordion>
+  </Step>
+</Steps>
+
+## What's Next?
+
+Now that you have Redash running with your first dashboard, explore these features:
+
+<CardGroup cols={2}>
+  <Card title="Query Parameters" icon="sliders" href="/advanced/parameterized-queries">
+    Make queries dynamic with user inputs and dropdowns
+  </Card>
+  
+  <Card title="Alerts" icon="bell" href="/features/alerts">
+    Get notified when your data meets specific conditions
+  </Card>
+  
+  <Card title="More Data Sources" icon="database" href="/data-sources/overview">
+    Connect to 35+ databases and services
+  </Card>
+  
+  <Card title="API Integration" icon="code" href="/advanced/api-integration">
+    Automate workflows with the Redash API
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port 5000 is already in use">
+    Edit your `.env` file and change `REDASH_PORT=5000` to another port like `REDASH_PORT=5001`.
+    
+    Then restart:
+    ```bash
+    docker-compose down
+    docker-compose up -d
+    ```
+  </Accordion>
+  
+  <Accordion title="Can't connect to database">
+    Common issues:
+    - **Firewall**: Ensure your database allows connections from Redash's IP
+    - **Credentials**: Double-check username, password, and database name
+    - **SSL**: Try changing SSL Mode to "require" or "disable"
+    - **Host**: Use IP address instead of hostname if DNS isn't working
+  </Accordion>
+  
+  <Accordion title="Redash services won't start">
+    Check Docker logs:
+    ```bash
+    docker-compose logs server
+    docker-compose logs worker
+    ```
+    
+    Common fixes:
+    - Ensure Docker has enough memory allocated (2GB minimum)
+    - Check that `.env` file has valid secret keys
+    - Verify PostgreSQL and Redis containers are healthy
+  </Accordion>
+  
+  <Accordion title="Query execution times out">
+    - Check if the query is optimized (use EXPLAIN ANALYZE)
+    - Increase query timeout in Settings → Data Sources
+    - Consider adding database indexes on frequently queried columns
+    - Use query result caching for expensive queries
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  For production deployments with high availability, SSL, and backup strategies, see our comprehensive [Installation Guide](/installation).
 </Note>

@@ -1,0 +1,162 @@
+---
+title: Data Sources Overview
+description: Complete list of supported data sources in Redash
+---
+
+Redash supports 50+ data sources, allowing you to query and visualize data from various databases, cloud services, and APIs.
+
+## SQL Databases
+
+### Relational Databases
+
+<CardGroup cols={2}>
+  <Card title="PostgreSQL" icon="database" href="/data-sources/sql-databases#postgresql">
+    Open-source relational database with advanced features
+  </Card>
+  <Card title="MySQL" icon="database" href="/data-sources/sql-databases#mysql">
+    Popular open-source relational database
+  </Card>
+  <Card title="Microsoft SQL Server" icon="database" href="/data-sources/sql-databases#microsoft-sql-server">
+    Enterprise relational database from Microsoft
+  </Card>
+  <Card title="Oracle" icon="database" href="/data-sources/sql-databases#oracle">
+    Enterprise-grade relational database
+  </Card>
+</CardGroup>
+
+### Distributed SQL & Analytics
+
+- **CockroachDB** - Distributed SQL database
+- **Presto/Trino** - Distributed SQL query engine
+- **Apache Drill** - Schema-free SQL query engine
+- **Apache Ignite** - In-memory SQL database
+- **Apache Kylin** - OLAP engine for big data
+- **ClickHouse** - Column-oriented database for analytics
+- **DuckDB** - In-process SQL OLAP database
+- **Exasol** - High-performance analytics database
+- **Impala** - SQL query engine for Hadoop
+- **Apache Hive** - Data warehouse infrastructure
+- **Apache Phoenix** - SQL layer over HBase
+- **Pinot** - Real-time distributed OLAP datastore
+- **RisingWave** - Distributed SQL streaming database
+- **Vertica** - Columnar analytics platform
+- **MemSQL/SingleStore** - Distributed SQL database
+
+## NoSQL Databases
+
+<CardGroup cols={2}>
+  <Card title="MongoDB" icon="leaf" href="/data-sources/nosql-databases#mongodb">
+    Document-oriented NoSQL database
+  </Card>
+  <Card title="Elasticsearch" icon="magnifying-glass" href="/data-sources/nosql-databases#elasticsearch">
+    Distributed search and analytics engine
+  </Card>
+  <Card title="Cassandra" icon="table" href="/data-sources/nosql-databases#cassandra">
+    Distributed wide-column NoSQL database
+  </Card>
+  <Card title="Couchbase" icon="cube" href="/data-sources/nosql-databases#couchbase">
+    Distributed NoSQL document database
+  </Card>
+</CardGroup>
+
+### Additional NoSQL Databases
+
+- **ArangoDB** - Multi-model database
+- **DGraph** - Distributed graph database
+- **ScyllaDB** - High-performance Cassandra-compatible database
+- **Amazon DynamoDB** - Managed NoSQL database
+- **Azure Cosmos DB** - Multi-model database service
+
+## Cloud Data Warehouses
+
+<CardGroup cols={2}>
+  <Card title="BigQuery" icon="google" href="/data-sources/cloud-services#bigquery">
+    Google's serverless data warehouse
+  </Card>
+  <Card title="Snowflake" icon="snowflake" href="/data-sources/cloud-services#snowflake">
+    Cloud-native data warehouse platform
+  </Card>
+  <Card title="Amazon Redshift" icon="aws" href="/data-sources/cloud-services#amazon-redshift">
+    AWS data warehouse service
+  </Card>
+  <Card title="Amazon Athena" icon="aws" href="/data-sources/cloud-services#amazon-athena">
+    Serverless interactive query service
+  </Card>
+  <Card title="Databricks" icon="chart-line" href="/data-sources/cloud-services#databricks">
+    Unified analytics platform
+  </Card>
+</CardGroup>
+
+### Additional Cloud Services
+
+- **Azure Data Explorer (Kusto)** - Fast analytics service
+- **Tinybird** - Real-time data analytics API
+- **Rockset** - Real-time analytics database
+- **e6data** - Cloud analytics engine
+- **Databend** - Cloud data warehouse
+
+## Time Series & Monitoring
+
+- **InfluxDB** - Time series database
+- **InfluxDB v2** - Latest version of InfluxDB
+- **Prometheus** - Monitoring and alerting toolkit
+- **Graphite** - Enterprise-ready monitoring tool
+- **CloudWatch** - AWS monitoring service
+- **CloudWatch Insights** - Log analytics service
+- **Axibase Time Series Database** - Time series database
+
+## APIs & Services
+
+- **Google Analytics** - Web analytics service
+- **Google Analytics 4** - Next generation analytics
+- **Google Search Console** - Search performance data
+- **Google Spreadsheets** - Spreadsheet data source
+- **Salesforce** - CRM platform
+- **JIRA (JQL)** - Issue tracking queries
+- **Yandex Metrica** - Web analytics
+- **Yandex Disk** - Cloud storage
+
+## Custom Data Sources
+
+<CardGroup cols={2}>
+  <Card title="Python" icon="python" href="/data-sources/custom-sources#python">
+    Write custom queries in Python
+  </Card>
+  <Card title="JSON API" icon="code" href="/data-sources/custom-sources#json-api">
+    Query JSON-based REST APIs
+  </Card>
+  <Card title="CSV" icon="file-csv" href="/data-sources/custom-sources#csv">
+    Load data from CSV files
+  </Card>
+  <Card title="URL" icon="link" href="/data-sources/custom-sources#url">
+    Fetch data from any URL
+  </Card>
+  <Card title="Excel" icon="file-excel" href="/data-sources/custom-sources#excel">
+    Load data from Excel files
+  </Card>
+</CardGroup>
+
+### Query Results
+
+- **Query Results** - Query existing Redash query results
+
+## Specialized Databases
+
+- **DB2** - IBM's relational database
+- **Netezza** - IBM data warehouse appliance
+- **SQLite** - Embedded SQL database
+- **Google Spanner** - Globally distributed database
+- **Corporate Memory** - Enterprise knowledge graph
+- **SPARQL** - RDF query language endpoint
+- **Script** - Custom script execution
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Connecting Data Sources" icon="plug" href="/data-sources/connecting">
+    Learn how to add and configure data sources
+  </Card>
+  <Card title="Writing Queries" icon="code" href="/queries/writing-queries">
+    Start querying your data sources
+  </Card>
+</CardGroup>

@@ -1,0 +1,617 @@
+---
+title: Data Sources
+description: Configure and manage data source connections
+---
+
+## List Data Sources
+
+Retrieve all data sources accessible to the user.
+
+```bash
+GET /api/data_sources
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/data_sources
+```
+
+### Response
+
+```json
+[
+  {
+    "id": 1,
+    "name": "PostgreSQL Production",
+    "type": "pg",
+    "syntax": "sql",
+    "paused": false,
+    "pause_reason": null,
+    "supports_auto_limit": true,
+    "view_only": false,
+    "created_at": "2024-01-10T09:00:00Z"
+  },
+  {
+    "id": 2,
+    "name": "MongoDB Analytics",
+    "type": "mongo",
+    "syntax": "json",
+    "paused": false,
+    "pause_reason": null,
+    "supports_auto_limit": false,
+    "view_only": true,
+    "created_at": "2024-01-12T10:30:00Z"
+  }
+]
+```
+
+<Note>
+  Non-admin users only see data sources their groups have access to. The `view_only` field indicates whether the user has read-only access.
+</Note>
+
+## Get Data Source
+
+Retrieve a specific data source.
+
+```bash
+GET /api/data_sources/<data_source_id>
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/data_sources/1
+```
+
+### Response Fields
+
+<ResponseField name="id" type="number">
+  Data source ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Data source name
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Data source type (e.g., `pg`, `mysql`, `mongodb`, `bigquery`)
+</ResponseField>
+
+<ResponseField name="syntax" type="string">
+  Query syntax: `sql`, `json`, or custom
+</ResponseField>
+
+<ResponseField name="options" type="object">
+  Configuration options (only visible to admins)
+</ResponseField>
+
+<ResponseField name="paused" type="boolean">
+  Whether the data source is paused
+</ResponseField>
+
+<ResponseField name="pause_reason" type="string">
+  Reason for pausing (if paused)
+</ResponseField>
+
+<ResponseField name="supports_auto_limit" type="boolean">
+  Whether automatic query limits are supported
+</ResponseField>
+
+<ResponseField name="view_only" type="boolean">
+  Whether current user has read-only access
+</ResponseField>
+
+<ResponseField name="queue_name" type="string">
+  Queue name for query execution
+</ResponseField>
+
+<ResponseField name="scheduled_queue_name" type="string">
+  Queue name for scheduled query execution
+</ResponseField>
+
+### Admin Response
+
+Admins see additional fields including connection details:
+
+```json
+{
+  "id": 1,
+  "name": "PostgreSQL Production",
+  "type": "pg",
+  "syntax": "sql",
+  "options": {
+    "host": "db.example.com",
+    "port": 5432,
+    "dbname": "production",
+    "user": "redash"
+  },
+  "paused": false,
+  "queue_name": "queries",
+  "scheduled_queue_name": "scheduled_queries",
+  "groups": {
+    "1": false,
+    "2": true
+  }
+}
+```
+
+## Create Data Source
+
+Create a new data source.
+
+```bash
+POST /api/data_sources
+```
+
+<Warning>
+  This endpoint requires admin permissions.
+</Warning>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Data source name (must be unique)
+</ParamField>
+
+<ParamField body="type" type="string" required>
+  Data source type identifier
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  Configuration options specific to the data source type
+</ParamField>
+
+### Example Request (PostgreSQL)
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "PostgreSQL Staging",
+    "type": "pg",
+    "options": {
+      "host": "staging-db.example.com",
+      "port": 5432,
+      "dbname": "staging",
+      "user": "redash",
+      "password": "secure_password",
+      "sslmode": "prefer"
+    }
+  }' \
+  https://redash.example.com/api/data_sources
+```
+
+### Example Request (MySQL)
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "MySQL Analytics",
+    "type": "mysql",
+    "options": {
+      "host": "mysql.example.com",
+      "port": 3306,
+      "db": "analytics",
+      "user": "redash",
+      "passwd": "secure_password",
+      "use_ssl": true
+    }
+  }' \
+  https://redash.example.com/api/data_sources
+```
+
+### Response
+
+Returns the created data source object with full configuration.
+
+## Update Data Source
+
+Update an existing data source.
+
+```bash
+POST /api/data_sources/<data_source_id>
+```
+
+<Warning>
+  This endpoint requires admin permissions.
+</Warning>
+
+### Request Body
+
+Same fields as Create Data Source.
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "PostgreSQL Production (Updated)",
+    "type": "pg",
+    "options": {
+      "host": "new-db.example.com",
+      "port": 5432,
+      "dbname": "production",
+      "user": "redash",
+      "password": "new_password"
+    }
+  }' \
+  https://redash.example.com/api/data_sources/1
+```
+
+### Response
+
+Returns the updated data source object.
+
+## Delete Data Source
+
+Delete a data source.
+
+```bash
+DELETE /api/data_sources/<data_source_id>
+```
+
+<Warning>
+  This endpoint requires admin permissions. Deleting a data source will break all queries using it.
+</Warning>
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/data_sources/1
+```
+
+## Test Connection
+
+Test the connection to a data source.
+
+```bash
+POST /api/data_sources/<data_source_id>/test
+```
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/data_sources/1/test
+```
+
+### Response
+
+```json
+{
+  "ok": true,
+  "message": "success"
+}
+```
+
+Or on failure:
+
+```json
+{
+  "ok": false,
+  "message": "FATAL: password authentication failed for user \"redash\""
+}
+```
+
+## Pause Data Source
+
+Temporarily pause query execution on a data source.
+
+```bash
+POST /api/data_sources/<data_source_id>/pause
+```
+
+### Request Body
+
+<ParamField body="reason" type="string">
+  Reason for pausing (optional)
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST \
+  -H "Authorization: Key YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Maintenance window"}' \
+  https://redash.example.com/api/data_sources/1/pause
+```
+
+### Response
+
+Returns the updated data source with `paused: true`.
+
+## Resume Data Source
+
+Resume a paused data source.
+
+```bash
+DELETE /api/data_sources/<data_source_id>/pause
+```
+
+### Example Request
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/data_sources/1/pause
+```
+
+## Get Schema
+
+Retrieve the database schema for a data source.
+
+```bash
+GET /api/data_sources/<data_source_id>/schema
+```
+
+### Query Parameters
+
+<ParamField query="refresh" type="boolean">
+  Force refresh the schema cache
+</ParamField>
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  "https://redash.example.com/api/data_sources/1/schema?refresh=true"
+```
+
+### Response (Cached)
+
+```json
+{
+  "schema": {
+    "public": [
+      {
+        "name": "users",
+        "columns": ["id", "email", "created_at", "updated_at"]
+      },
+      {
+        "name": "orders",
+        "columns": ["id", "user_id", "amount", "status", "created_at"]
+      }
+    ]
+  }
+}
+```
+
+### Response (Refreshing)
+
+If the schema needs to be fetched:
+
+```json
+{
+  "job": {
+    "id": "schema_job_123",
+    "status": 1
+  }
+}
+```
+
+Poll the job endpoint to check completion, then request the schema again.
+
+## List Data Source Types
+
+Get all available data source types.
+
+```bash
+GET /api/data_sources/types
+```
+
+### Example Request
+
+```bash
+curl -H "Authorization: Key YOUR_API_KEY" \
+  https://redash.example.com/api/data_sources/types
+```
+
+### Response
+
+```json
+[
+  {
+    "type": "pg",
+    "name": "PostgreSQL",
+    "configuration_schema": {
+      "type": "object",
+      "properties": {
+        "host": {"type": "string", "title": "Host"},
+        "port": {"type": "number", "default": 5432},
+        "user": {"type": "string", "title": "User"},
+        "password": {"type": "string", "title": "Password"},
+        "dbname": {"type": "string", "title": "Database Name"}
+      },
+      "required": ["dbname"],
+      "secret": ["password"]
+    }
+  },
+  {
+    "type": "mysql",
+    "name": "MySQL",
+    "configuration_schema": {...}
+  }
+]
+```
+
+## Supported Data Source Types
+
+Redash supports many data source types:
+
+### Relational Databases
+
+- **PostgreSQL** (`pg`)
+- **MySQL** (`mysql`)
+- **SQL Server** (`mssql`)
+- **Oracle** (`oracle`)
+- **SQLite** (`sqlite`)
+- **Vertica** (`vertica`)
+- **Presto** (`presto`)
+- **Hive** (`hive`)
+
+### NoSQL Databases
+
+- **MongoDB** (`mongo`)
+- **Cassandra** (`cassandra`)
+- **Elasticsearch** (`elasticsearch`)
+- **DynamoDB** (`dynamodb_sql`)
+
+### Cloud Data Warehouses
+
+- **Amazon Redshift** (`redshift`)
+- **Google BigQuery** (`bigquery`)
+- **Snowflake** (`snowflake`)
+- **Azure SQL Database** (`azure_sql_database`)
+- **Databricks** (`databricks`)
+
+### Analytics & BI
+
+- **Google Analytics** (`google_analytics`)
+- **Google Sheets** (`gss`)
+- **Salesforce** (`salesforce`)
+
+### Time Series
+
+- **Prometheus** (`prometheus`)
+- **InfluxDB** (`influxdb`)
+- **Graphite** (`graphite`)
+
+### Other
+
+- **CSV** (`csv`)
+- **JSON** (`json`)
+- **Python** (`python`)
+- **URL** (`url`)
+
+## Group Permissions
+
+Control which groups can access a data source and their permission level.
+
+### View Group Permissions
+
+Included in the data source object (admin only):
+
+```json
+{
+  "groups": {
+    "1": false,  // Group 1 has full access
+    "2": true    // Group 2 has view-only access
+  }
+}
+```
+
+### Manage Permissions
+
+See the [Groups API](/api/groups) for managing data source access per group.
+
+## Common Configuration Options
+
+### PostgreSQL
+
+```json
+{
+  "host": "localhost",
+  "port": 5432,
+  "user": "redash",
+  "password": "password",
+  "dbname": "database_name",
+  "sslmode": "prefer"  // Options: disable, allow, prefer, require
+}
+```
+
+### MySQL
+
+```json
+{
+  "host": "localhost",
+  "port": 3306,
+  "user": "redash",
+  "passwd": "password",
+  "db": "database_name",
+  "use_ssl": false,
+  "use_unicode": true,
+  "charset": "utf8mb4"
+}
+```
+
+### BigQuery
+
+```json
+{
+  "projectId": "your-project-id",
+  "jsonKeyFile": "{...service account JSON...}",
+  "totalMBytesProcessedLimit": null,
+  "userDefinedFunctionResourceUri": null,
+  "useStandardSql": true,
+  "location": "US"
+}
+```
+
+### MongoDB
+
+```json
+{
+  "connectionString": "mongodb://localhost:27017/dbname",
+  "dbName": "database_name",
+  "replicaSetName": null
+}
+```
+
+### Snowflake
+
+```json
+{
+  "account": "account_name",
+  "user": "username",
+  "password": "password",
+  "warehouse": "warehouse_name",
+  "database": "database_name",
+  "schema": "schema_name",
+  "role": "role_name"
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Security">
+    - Use read-only database users when possible
+    - Enable SSL/TLS connections
+    - Store credentials securely (Redash encrypts connection details)
+    - Limit IP access to your database
+    - Use view-only permissions for analyst groups
+  </Accordion>
+
+  <Accordion title="Performance">
+    - Configure appropriate query timeouts
+    - Use connection pooling settings
+    - Set up separate queues for different workloads
+    - Test connections before making them available to users
+  </Accordion>
+
+  <Accordion title="Organization">
+    - Use descriptive names (e.g., "PostgreSQL Production", not "DB1")
+    - Group similar data sources logically
+    - Pause data sources during maintenance windows
+    - Document special configurations in the description
+  </Accordion>
+
+  <Accordion title="Monitoring">
+    - Test connections regularly
+    - Monitor query performance per data source
+    - Set up alerts for connection failures
+    - Review and optimize slow queries
+  </Accordion>
+</AccordionGroup>

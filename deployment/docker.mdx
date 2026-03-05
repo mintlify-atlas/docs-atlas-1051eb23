@@ -1,0 +1,426 @@
+---
+title: Docker Deployment
+description: Deploy Redash using Docker and Docker Compose
+---
+
+Redash provides official Docker images that make deployment straightforward using Docker Compose.
+
+## Quick Start
+
+For production deployments, refer to the [getredash/setup](https://github.com/getredash/setup) repository which provides ready-to-use setup scripts and configuration.
+
+## Docker Image
+
+The official Redash Docker image is built using a multi-stage build process:
+
+- **Base Image**: `python:3.13-slim-bookworm`
+- **Frontend Builder**: `node:18-bookworm` (for asset compilation)
+- **Exposed Port**: `5000`
+- **User**: `redash` (non-root)
+- **Working Directory**: `/app`
+
+### Build Arguments
+
+| Argument | Description | Default |
+|----------|-------------|--------|
+| `skip_frontend_build` | Skip frontend asset building | `false` |
+| `code_coverage` | Enable code coverage instrumentation | `false` |
+| `install_groups` | Poetry dependency groups to install | `main,all_ds,dev` |
+| `POETRY_OPTIONS` | Additional Poetry install options | `--no-root --no-interaction --no-ansi` |
+| `databricks_odbc_driver_url` | Databricks ODBC driver URL | See Dockerfile |
+
+### Installed Components
+
+The image includes:
+
+- **Python 3.13** with Poetry 2.1.4
+- **Database Drivers**: PostgreSQL, MySQL, MSSQL (amd64 only), ODBC
+- **Data Source Support**: 35+ query runners
+- **SAML Support**: xmlsec1 for authentication
+- **Kerberos**: For MSSQL on ARM64
+
+## Docker Compose Setup
+
+### Development Configuration
+
+The included `compose.yaml` is configured for development. Here's a basic production-oriented structure:
+
+```yaml
+version: '3.8'
+
+services:
+  server:
+    image: redash/redash:latest
+    command: server
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "5000:5000"
+    environment:
+      REDASH_DATABASE_URL: postgresql://postgres:password@postgres/postgres
+      REDASH_REDIS_URL: redis://redis:6379/0
+      REDASH_COOKIE_SECRET: <generate-secret>
+      REDASH_SECRET_KEY: <generate-secret>
+    restart: unless-stopped
+
+  scheduler:
+    image: redash/redash:latest
+    command: scheduler
+    depends_on:
+      - server
+    environment:
+      REDASH_DATABASE_URL: postgresql://postgres:password@postgres/postgres
+      REDASH_REDIS_URL: redis://redis:6379/0
+    restart: unless-stopped
+
+  worker:
+    image: redash/redash:latest
+    command: worker
+    depends_on:
+      - server
+    environment:
+      REDASH_DATABASE_URL: postgresql://postgres:password@postgres/postgres
+      REDASH_REDIS_URL: redis://redis:6379/0
+      WORKERS_COUNT: 2
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+```
+
+## Service Components
+
+Redash requires three service components:
+
+### Server
+
+The web application server runs using Gunicorn.
+
+**Command**: `server`
+
+**Configuration**:
+- Uses Gunicorn with 4 workers by default (`REDASH_WEB_WORKERS`)
+- Binds to `[::]:5000` (IPv6/IPv4)
+- Request timeout: 60 seconds (`REDASH_GUNICORN_TIMEOUT`)
+- Worker recycling: 1000 requests (`MAX_REQUESTS`)
+
+### Scheduler
+
+Handles scheduled query execution using RQ scheduler.
+
+**Command**: `scheduler`
+
+**Purpose**:
+- Execute queries on schedule
+- Refresh schemas periodically
+- Clean up old query results
+
+### Worker
+
+Processes background jobs using RQ workers managed by Supervisor.
+
+**Command**: `worker`
+
+**Configuration**:
+- Default worker count: 2 (`WORKERS_COUNT`)
+- Configurable queues (`QUEUES`)
+- Auto-restart on failure
+- Health check every 60 seconds
+
+**Worker Configuration** (`worker.conf`):
+```ini
+[program:worker]
+command=./manage.py rq worker %(ENV_QUEUES)s
+numprocs=%(ENV_WORKERS_COUNT)s
+autorestart=true
+startsecs=300
+```
+
+## Volumes
+
+### Required Volumes
+
+**PostgreSQL Data**:
+```yaml
+volumes:
+  - postgres-data:/var/lib/postgresql/data
+```
+
+### Optional Volumes
+
+**Custom Configuration**:
+```yaml
+volumes:
+  - ./settings.py:/app/redash/settings/custom.py
+```
+
+**Logs** (if not using stdout):
+```yaml
+volumes:
+  - ./logs:/app/logs
+```
+
+**Static Assets** (for customization):
+```yaml
+volumes:
+  - ./client/dist:/app/client/dist:ro
+```
+
+## Networking
+
+### Port Mapping
+
+- **5000**: Web interface (HTTP)
+- **5678**: Debugger (development only)
+
+### Internal Communication
+
+- **Redis**: Port 6379 (internal only)
+- **PostgreSQL**: Port 5432 (internal only)
+
+### Reverse Proxy Setup
+
+For production, use a reverse proxy (nginx, Traefik, etc.):
+
+```nginx
+upstream redash {
+    server localhost:5000;
+}
+
+server {
+    listen 80;
+    server_name redash.example.com;
+
+    location / {
+        proxy_pass http://redash;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### HTTPS Configuration
+
+When running behind HTTPS:
+
+```yaml
+environment:
+  REDASH_ENFORCE_HTTPS: "true"
+  REDASH_COOKIES_SECURE: "true"
+```
+
+## Container Entrypoint
+
+The entrypoint script (`/app/bin/docker-entrypoint`) supports these commands:
+
+| Command | Description |
+|---------|-------------|
+| `server` | Start Gunicorn web server |
+| `worker` | Start RQ workers (with Supervisor) |
+| `scheduler` | Start RQ scheduler |
+| `create_db` | Initialize database tables |
+| `manage` | Run management commands |
+| `shell` | Open interactive shell |
+| `dev_server` | Start development server with auto-reload |
+| `dev_worker` | Start development worker with auto-reload |
+| `dev_scheduler` | Start development scheduler with auto-reload |
+| `tests` | Run test suite |
+
+### Development Commands
+
+```bash
+# Start with debugger
+docker compose run --rm server debug
+
+# Run database migrations
+docker compose run --rm server manage database create_tables
+
+# Interactive shell
+docker compose run --rm server shell
+
+# Check configuration
+docker compose run --rm server manage check_settings
+```
+
+## Database Initialization
+
+On first run, initialize the database:
+
+```bash
+# Create database tables
+docker compose run --rm server create_db
+
+# Create admin user
+docker compose run --rm server manage users create_admin \
+  --email admin@example.com \
+  --name "Admin User" \
+  --password secretpassword
+```
+
+## Health Checks
+
+### Server Health Check
+
+```yaml
+server:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:5000/ping"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+```
+
+### Worker Health Check
+
+```yaml
+worker:
+  healthcheck:
+    test: ["CMD", "/app/bin/docker-entrypoint", "workers_healthcheck"]
+    interval: 60s
+    timeout: 10s
+    retries: 3
+```
+
+## Performance Tuning
+
+### Gunicorn Workers
+
+Calculate workers: `(2 * CPU_CORES) + 1`
+
+```yaml
+environment:
+  REDASH_WEB_WORKERS: 4
+  REDASH_GUNICORN_TIMEOUT: 120
+```
+
+### RQ Workers
+
+```yaml
+environment:
+  WORKERS_COUNT: 4
+  QUEUES: queries,scheduled_queries,schemas
+```
+
+### Memory Limits
+
+```yaml
+server:
+  deploy:
+    resources:
+      limits:
+        memory: 2G
+      reservations:
+        memory: 1G
+```
+
+## Logging
+
+By default, logs go to stdout/stderr for Docker consumption:
+
+```yaml
+environment:
+  REDASH_LOG_LEVEL: INFO
+  REDASH_LOG_STDOUT: "true"
+  REDASH_LOG_FORMAT: "[%(asctime)s][PID:%(process)d][%(levelname)s] %(message)s"
+```
+
+## Security
+
+### Non-Root User
+
+The image runs as the `redash` user (non-root) for security.
+
+### Secrets Management
+
+Never commit secrets. Use Docker secrets or environment files:
+
+```yaml
+services:
+  server:
+    env_file:
+      - .env.secrets
+```
+
+**`.env.secrets`**:
+```bash
+REDASH_COOKIE_SECRET=<generate-with-openssl-rand>
+REDASH_SECRET_KEY=<generate-with-openssl-rand>
+REDASH_DATABASE_URL=postgresql://user:password@host/db
+```
+
+Generate secrets:
+```bash
+openssl rand -base64 32
+```
+
+## Troubleshooting
+
+### View Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f server
+```
+
+### Access Container
+
+```bash
+docker compose exec server bash
+```
+
+### Database Connection Issues
+
+The server waits for database availability before starting. Check:
+
+```bash
+docker compose exec server manage database check
+```
+
+### Worker Not Processing Jobs
+
+```bash
+# Check worker status
+docker compose exec worker /app/bin/docker-entrypoint workers_healthcheck
+
+# View RQ info
+docker compose exec server manage rq info
+```
+
+## Resource Requirements
+
+### Minimum
+
+- **CPU**: 2 cores
+- **RAM**: 2GB
+- **Disk**: 10GB
+
+### Recommended
+
+- **CPU**: 4+ cores
+- **RAM**: 4GB+
+- **Disk**: 50GB+ (depends on query result storage)
+
+## Next Steps
+
+- [Environment Variables](/deployment/environment-variables)
+- [Kubernetes Deployment](/deployment/kubernetes)
+- [Upgrading Redash](/deployment/upgrading)
