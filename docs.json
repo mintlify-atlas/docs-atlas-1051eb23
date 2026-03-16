@@ -1,18 +1,33 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "Redash",
+  "name": "Redash Documentation",
   "theme": "palm",
   "colors": {
-    "primary": "#fc7c64",
-    "light": "#fcb4a4",
-    "dark": "#fc7c64"
+    "primary": "#FE7964",
+    "light": "#FE7964",
+    "dark": "#FE7964"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.ico",
   "logo": {
-    "light": "https://media.brand.dev/2950618e-3a28-4245-b143-04f0d63bd16e.png",
+    "light": "https://media.brand.dev/b0148bea-3999-4583-9457-fa418f725c5b.svg",
     "dark": "https://media.brand.dev/b0148bea-3999-4583-9457-fa418f725c5b.svg"
   },
+  "background": {
+    "color": {
+      "dark": "#161314"
+    }
+  },
   "navbar": {
+    "links": [
+      {
+        "label": "Discussions",
+        "href": "https://github.com/getredash/redash/discussions"
+      },
+      {
+        "label": "Discord",
+        "href": "https://discord.gg/tN5MdmfGBp"
+      }
+    ],
     "primary": {
       "type": "github",
       "href": "https://github.com/getredash/redash"
@@ -26,15 +41,15 @@
   "navigation": {
     "tabs": [
       {
+        "tab": "Home",
+        "pages": ["index"]
+      },
+      {
         "tab": "Documentation",
         "groups": [
           {
             "group": "Getting Started",
-            "pages": [
-              "introduction",
-              "quickstart",
-              "installation"
-            ]
+            "pages": ["introduction", "quickstart", "installation"]
           },
           {
             "group": "Core Features",
@@ -100,10 +115,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "api/introduction",
-              "api/authentication"
-            ]
+            "pages": ["api/introduction", "api/authentication"]
           },
           {
             "group": "Resources",
